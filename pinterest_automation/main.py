@@ -112,6 +112,14 @@ def cmd_daemon() -> None:
             log.warning("cycle skipped: another run is publishing")
 
     sched.add_job(cycle, "interval", minutes=10, id="cycle", max_instances=1)
+
+    def nightly_report() -> None:
+        try:
+            cmd_report("daily")
+        except Exception as e:  # noqa: BLE001 - a report failure must not kill the daemon
+            log.error("nightly report failed: %s", e)
+
+    sched.add_job(nightly_report, "cron", hour=23, minute=30, id="daily-report")
     sched.start()
     print("daemon running. ctrl-c to stop.")
     try:
@@ -126,6 +134,21 @@ def cmd_sync_analytics(days: int) -> None:
     from pinterest_automation.services.analytics_service import sync_published
     n = sync_published(db, lookback_days=days)
     print(f"synced {n} pins")
+
+
+def cmd_report(kind: str) -> int:
+    from datetime import date
+
+    from pinterest_automation.services.reporting import daily_report, weekly_report, write_report
+
+    db = dbmod.get_session_factory()()
+    if kind == "weekly":
+        rep = weekly_report(db, date.today())
+    else:
+        rep = daily_report(db, date.today())
+    path = write_report(rep, kind)
+    print(f"report written: {path}")
+    return 0
 
 
 def cmd_serve() -> None:
@@ -146,6 +169,8 @@ def run(argv: list[str] | None = None) -> int:
     p_pn.add_argument("--id", type=int, required=True)
     p_sa = sub.add_parser("sync-analytics")
     p_sa.add_argument("--days", type=int, default=30)
+    p_rep = sub.add_parser("report")
+    p_rep.add_argument("--kind", choices=["daily", "weekly"], default="daily")
     sub.add_parser("run-once")
     sub.add_parser("daemon")
     sub.add_parser("serve")
@@ -165,6 +190,8 @@ def run(argv: list[str] | None = None) -> int:
     if args.cmd == "sync-analytics":
         cmd_sync_analytics(args.days)
         return 0
+    if args.cmd == "report":
+        return cmd_report(args.kind)
     if args.cmd == "run-once":
         return cmd_run_once()
     if args.cmd == "daemon":
