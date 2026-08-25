@@ -7,3 +7,5 @@ pinterest_automation/logs/*.log*
 pinterest_automation/logs/reports/
 venv/
 .venv/
+mini.md
+*.md.bak
