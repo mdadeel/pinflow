@@ -12,6 +12,11 @@ def test_manual_override_wins():
     assert map_board("Anything", BOARDS, overrides={"Anything": "9"}) == "9"
 
 
+def test_override_case_insensitive():
+    from pinterest_automation.services.board_mapper import map_board
+    assert map_board("couple wallpapers", BOARDS, {"Couple Wallpapers": "9"}) == "9"
+
+
 def test_exact_match_case_insensitive():
     from pinterest_automation.services.board_mapper import map_board
     assert map_board("Phone Backgrounds", BOARDS) == "3"

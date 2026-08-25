@@ -14,8 +14,11 @@ def map_board(recommended: str, boards: list[dict],
     """Map an AI-recommended board name to a real Pinterest board id."""
     if not recommended:
         return None
-    if overrides and recommended in overrides:
-        return overrides[recommended]
+    if overrides:
+        lowered = {k.lower(): v for k, v in overrides.items()}
+        hit = lowered.get(recommended.lower())
+        if hit:
+            return hit
     rec = _tokens(recommended)
     best_id: str | None = None
     best_score = 0
