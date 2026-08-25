@@ -8,6 +8,7 @@ from pinterest_automation.config.settings import Settings, settings
 from pinterest_automation.database.db import utcnow
 from pinterest_automation.database.models import Pin
 from pinterest_automation.processors.uploader import publish_pin
+from pinterest_automation.services import events
 
 log = logging.getLogger(__name__)
 
@@ -59,6 +60,8 @@ def assign_schedule_times(db, pin_ids: list[int], cfg: Settings | None = None,
         pin.scheduled_time = slot
         pin.status = "scheduled"
         assigned += 1
+        events.publish("pin.scheduled", pin_id=pin.id,
+                       scheduled_time=slot.isoformat())
     db.commit()
     log.info("scheduled %d pins", assigned)
     return assigned

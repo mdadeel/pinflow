@@ -5,6 +5,7 @@ from pathlib import Path
 from pinterest_automation.config.settings import settings
 from pinterest_automation.database.db import utcnow
 from pinterest_automation.database.models import Pin
+from pinterest_automation.services import events
 from pinterest_automation.services.seo_generator import (
     PinMetadata,
     MetadataValidationError,  # noqa: F401 - re-exported for tests/callers
@@ -25,6 +26,7 @@ def _apply(pin: Pin, m: PinMetadata) -> None:
     pin.content_category = m.category
     pin.ai_called_at = utcnow()
     pin.status = "ready"
+    events.publish("metadata.generated", pin_id=pin.id, title=m.title)
 
 
 def analyze_pending(db, limit: int | None = None) -> int:
@@ -61,6 +63,7 @@ def analyze_pending(db, limit: int | None = None) -> int:
             except Exception as e:  # noqa: BLE001 - record per-pin failure, keep the batch alive
                 pin.retry_count += 1
                 pin.error_message = str(e)[:500]
+                events.publish("metadata.failed", pin_id=pin.id, error=str(e)[:200])
                 log.error("analyze failed for %s: %s", pin.image_path, str(e)[:200])
         db.commit()
         if len(pins) < take:

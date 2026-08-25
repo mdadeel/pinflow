@@ -5,6 +5,7 @@ from pinterest_automation.api.pinterest import PinterestError, create_pin, get_b
 from pinterest_automation.config.settings import settings
 from pinterest_automation.database.db import utcnow
 from pinterest_automation.database.models import Pin
+from pinterest_automation.services import events
 from pinterest_automation.services.board_mapper import map_board
 
 log = logging.getLogger(__name__)
@@ -25,6 +26,7 @@ def publish_pin(db, pin: Pin, token: str | None = None,
     if not board_id:
         pin.status = "failed"
         pin.error_message = f"no matching pinterest board for {pin.board_name!r}"
+        events.publish("publish.failed", pin_id=pin.id, error=pin.error_message)
         db.commit()
         return False
     pin.board_id = board_id
@@ -38,6 +40,7 @@ def publish_pin(db, pin: Pin, token: str | None = None,
     except Exception as e:  # noqa: BLE001 - keep status; scheduler retries with backoff
         pin.retry_count += 1
         pin.error_message = str(e)[:500]
+        events.publish("publish.failed", pin_id=pin.id, error=str(e)[:200])
         db.commit()
         log.warning("pin %s create failed: %s", pin.id, str(e)[:200])
         return False
@@ -48,5 +51,6 @@ def publish_pin(db, pin: Pin, token: str | None = None,
     pin.status = "published"
     pin.error_message = None
     db.commit()
+    events.publish("pin.published", pin_id=pin.id, pin_url=pin.pin_url)
     log.info("published pin %s -> %s", pin.id, pin.pin_url)
     return True

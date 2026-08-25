@@ -3,6 +3,7 @@ import logging
 from pathlib import Path
 
 from pinterest_automation.database.models import Pin
+from pinterest_automation.services import events
 from pinterest_automation.utils.media_types import EXTENSIONS
 
 log = logging.getLogger(__name__)
@@ -31,5 +32,8 @@ def scan_folder(folder: Path, db) -> int:
     if batch:
         db.add_all(batch)
         db.commit()
+        for p in batch:
+            events.publish("image.uploaded", path=p.image_path,
+                           filename=Path(p.image_path).name)
         log.info("ingested %d new images from %s", len(batch), folder)
     return len(batch)
