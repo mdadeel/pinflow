@@ -30,5 +30,7 @@ class Settings(BaseSettings):
     reports_dir: Path = Path("pinterest_automation/logs/reports")
     db_url: str = "sqlite:///pinterest_automation/data.db"
 
+    board_overrides: dict[str, str] = {}
+
 
 settings = Settings()
