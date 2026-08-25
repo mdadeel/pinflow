@@ -83,38 +83,39 @@ def _collision_free_path(folder: Path, name: str) -> Path:
 async def upload_images(files: list[UploadFile] = File(...)):
     folder = Path(settings.images_dir)
     folder.mkdir(parents=True, exist_ok=True)
-    db = dbmod.get_session_factory()()
     added, duplicates, rejected = [], [], []
-    existing_hashes = {h for (h,) in db.query(Pin.image_hash).all()}
+    with dbmod.get_session_factory()() as db:
+        existing_hashes = {h for (h,) in db.query(Pin.image_hash).all()}
 
-    for uf in files:
-        name = uf.filename or "unnamed"
-        if not name.lower().endswith(tuple(EXTENSIONS)):
-            rejected.append(RejectedFile(filename=name, reason="unsupported type"))
-            continue
-        data = await uf.read()
-        if len(data) > MAX_UPLOAD_BYTES:
-            rejected.append(RejectedFile(filename=name, reason="too large"))
-            continue
-        digest = hashlib.sha256(data).hexdigest()
-        if digest in existing_hashes:
-            duplicates.append(name)
-            continue
-        dest = _collision_free_path(folder, name)
-        dest.write_bytes(data)
-        try:
-            w, h = image_dimensions(dest)
-        except Exception:  # noqa: BLE001 - corrupt image: reject, don't store
-            dest.unlink(missing_ok=True)
-            rejected.append(RejectedFile(filename=name, reason="unreadable image"))
-            continue
-        pin = Pin(image_path=str(dest.resolve()), image_hash=digest,
-                  file_size=len(data), width=w, height=h)
-        db.add(pin)
-        db.commit()
-        db.refresh(pin)
-        existing_hashes.add(digest)
-        added.append(_to_pin_out(pin))
-        publish("image.uploaded", path=str(dest.resolve()), filename=name)
+        for uf in files:
+            raw = Path(uf.filename or "").name  # strip directory components (path traversal)
+            name = raw or "unnamed"
+            if not name.lower().endswith(tuple(EXTENSIONS)):
+                rejected.append(RejectedFile(filename=name, reason="unsupported type"))
+                continue
+            data = await uf.read()
+            if len(data) > MAX_UPLOAD_BYTES:
+                rejected.append(RejectedFile(filename=name, reason="too large"))
+                continue
+            digest = hashlib.sha256(data).hexdigest()
+            if digest in existing_hashes:
+                duplicates.append(name)
+                continue
+            dest = _collision_free_path(folder, name)
+            dest.write_bytes(data)
+            try:
+                w, h = image_dimensions(dest)
+            except Exception:  # noqa: BLE001 - corrupt image: reject, don't store
+                dest.unlink(missing_ok=True)
+                rejected.append(RejectedFile(filename=name, reason="unreadable image"))
+                continue
+            pin = Pin(image_path=str(dest.resolve()), image_hash=digest,
+                      file_size=len(data), width=w, height=h)
+            db.add(pin)
+            db.commit()
+            db.refresh(pin)
+            existing_hashes.add(digest)
+            added.append(_to_pin_out(pin))
+            publish("image.uploaded", path=str(dest.resolve()), filename=name)
     return {"added": added, "duplicates": duplicates,
             "rejected": [r.model_dump() for r in rejected]}

@@ -96,6 +96,22 @@ def test_upload_emits_events(client):
     assert "path" in evt["payload"]
 
 
+def test_traversal_filename_is_sanitized(client, tmp_path):
+    f, c = client
+    r = _upload(c, [("../escaped.png", _png_bytes(12, 12))])
+    assert r.status_code == 201
+    body = r.json()
+    assert len(body["added"]) == 1
+    assert body["added"][0]["filename"] == "escaped.png"
+    # nothing written outside images_dir (tmp_path/storage)
+    assert not (tmp_path / "escaped.png").exists()
+    from pinterest_automation.database.models import Pin
+    with f() as s:
+        row = s.query(Pin).filter(Pin.id == body["added"][0]["id"]).one()
+        assert str(Path(row.image_path).resolve()).startswith(
+            str((tmp_path / "storage").resolve()))
+
+
 def test_upload_same_name_different_content_both_saved(client):
     f, c = client
     r1 = _upload(c, [("a.png", _png_bytes(30, 30))])
