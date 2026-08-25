@@ -3,10 +3,9 @@ import logging
 from pathlib import Path
 
 from pinterest_automation.database.models import Pin
+from pinterest_automation.utils.media_types import EXTENSIONS
 
 log = logging.getLogger(__name__)
-
-EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 
 
 def sha256_file(path: Path) -> str:
