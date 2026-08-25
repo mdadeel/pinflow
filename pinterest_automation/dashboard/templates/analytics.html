@@ -6,7 +6,7 @@
   <div class="card"><b>{{ "{:,}".format(clicks) }}</b>Clicks</div>
   <div class="card"><b>{{ "{:,}".format(saves) }}</b>Saves</div>
   <div class="card"><b>{{ "{:,}".format(outbound_clicks) }}</b>Outbound Clicks</div>
-  <div class="card"><b>{{ "%.2f%%".format(ctr * 100) }}</b>CTR</div>
+  <div class="card"><b>{{ "{:.2f}%".format(ctr * 100) }}</b>CTR</div>
 </div>
 <h2>Top Performing Pins</h2>
 <table>
@@ -17,7 +17,7 @@
     <td>{{ "{:,}".format(row.impressions) }}</td>
     <td>{{ "{:,}".format(row.clicks) }}</td>
     <td>{{ row.saves }}</td>
-    <td>{{ "%.2f%%".format(row.ctr * 100) }}</td>
+    <td>{{ "{:.2f}%".format(row.ctr * 100) }}</td>
   </tr>
   {% endfor %}
 </table>

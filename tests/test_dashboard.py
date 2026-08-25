@@ -75,6 +75,7 @@ def test_analytics_view_totals_and_top(env):
         s.commit()
     html = c.get("/analytics").text
     assert "Top Pin" in html and ("1,000" in html or "1000" in html)
+    assert "9.00%" in html          # CTR rendered as percentage
 
 
 def test_media_serves_registered_file_only(env, tmp_path):
