@@ -12,6 +12,10 @@ def db(tmp_path, monkeypatch):
     return make_session_factory(f"sqlite:///{tmp_path}/t.db")
 
 
+def utc_today() -> date:
+    return datetime.now(timezone.utc).date()
+
+
 def _seed(db, day):
     """2 published pins today w/ analytics, 1 failed pin today."""
     from pinterest_automation.database.models import AnalyticsRow, Pin
@@ -33,7 +37,7 @@ def _seed(db, day):
 
 def test_daily_report_counts(db):
     from pinterest_automation.services.reporting import daily_report
-    day = date.today()
+    day = utc_today()
     _seed(db, day)
     with db() as s:
         rep = daily_report(s, day)
@@ -45,9 +49,9 @@ def test_daily_report_counts(db):
 
 def test_weekly_report_ranks_by_clicks(db):
     from pinterest_automation.services.reporting import weekly_report
-    _seed(db, date.today())
+    _seed(db, utc_today())
     with db() as s:
-        rep = weekly_report(s, date.today())
+        rep = weekly_report(s, utc_today())
     assert rep["top_categories"][0]["category"] == "Anime"
     assert rep["top_categories"][0]["clicks"] == 20      # 10 x 2 pins summed
     assert rep["top_categories"][0]["impressions"] == 1000
@@ -67,7 +71,7 @@ def test_weekly_skips_null_group_keys(db):
         s.commit()
         s.add(AnalyticsRow(pin_id=p.id, impressions=10, clicks=5))
         s.commit()
-        rep = weekly_report(s, date.today())
+        rep = weekly_report(s, utc_today())
     assert all(r["category"] is not None for r in rep["top_categories"])
     assert all(r["keyword"] is not None for r in rep["best_keywords"])
     assert all(r["board_name"] is not None for r in rep["best_boards"])
@@ -76,7 +80,7 @@ def test_weekly_skips_null_group_keys(db):
 def test_weekly_excludes_out_of_window(db):
     from pinterest_automation.database.models import AnalyticsRow, Pin
     from pinterest_automation.services.reporting import weekly_report
-    day_start = datetime.combine(date.today(), time.min, tzinfo=timezone.utc)
+    day_start = datetime.combine(utc_today(), time.min, tzinfo=timezone.utc)
     with db() as s:
         s.add(Pin(image_path="/old.png", image_hash="hold", status="published",
                   content_category="OldCat", primary_keyword="old kw",
@@ -91,7 +95,7 @@ def test_weekly_excludes_out_of_window(db):
             s.add(AnalyticsRow(pin_id=p.id, impressions=999, clicks=99))
         s.commit()
     with db() as s:
-        rep = weekly_report(s, date.today())
+        rep = weekly_report(s, utc_today())
     assert rep["top_categories"] == []
     assert rep["best_keywords"] == []
     assert rep["best_boards"] == []

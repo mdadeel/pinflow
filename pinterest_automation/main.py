@@ -141,15 +141,16 @@ def cmd_sync_analytics(days: int) -> None:
 
 
 def cmd_report(kind: str) -> int:
-    from datetime import date
+    from datetime import datetime, timezone
 
     from pinterest_automation.services.reporting import daily_report, weekly_report, write_report
 
+    today = datetime.now(timezone.utc).date()   # report windows are UTC; local date lies after midnight
     db = dbmod.get_session_factory()()
     if kind == "weekly":
-        rep = weekly_report(db, date.today())
+        rep = weekly_report(db, today)
     else:
-        rep = daily_report(db, date.today())
+        rep = daily_report(db, today)
     path = write_report(rep, kind)
     print(f"report written: {path}")
     return 0
