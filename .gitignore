@@ -4,5 +4,6 @@ __pycache__/
 .pytest_cache/
 pinterest_automation/data.db
 pinterest_automation/logs/*.log*
+pinterest_automation/logs/reports/
 venv/
 .venv/
