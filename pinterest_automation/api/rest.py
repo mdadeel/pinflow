@@ -8,11 +8,11 @@ from typing import Literal
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 
 from pinterest_automation.config.settings import settings
 from pinterest_automation.database import db as dbmod
-from pinterest_automation.database.models import Pin
+from pinterest_automation.database.models import AnalyticsRow, Pin
 from pinterest_automation.services.events import publish
 from pinterest_automation.utils.media_types import EXTENSIONS, image_dimensions
 
@@ -176,3 +176,25 @@ def move_pin(pin_id: int, body: StatusUpdate):
         out = _to_pin_out(pin)
     publish("pin.updated", pin_id=out.id, status=out.status)
     return out
+
+
+@router.get("/stats")
+def stats():
+    with dbmod.get_session_factory()() as db:
+        counts = dict(db.query(Pin.status, func.count(Pin.id)).group_by(Pin.status).all())
+        sums = db.query(func.sum(AnalyticsRow.impressions),
+                        func.sum(AnalyticsRow.clicks),
+                        func.sum(AnalyticsRow.saves),
+                        func.sum(AnalyticsRow.outbound_clicks)).first()
+    return {
+        "total": sum(counts.values()),
+        "pending": counts.get("pending", 0),
+        "ready": counts.get("ready", 0),
+        "scheduled": counts.get("scheduled", 0),
+        "published": counts.get("published", 0),
+        "failed": counts.get("failed", 0),
+        "impressions": sums[0] or 0,
+        "clicks": sums[1] or 0,
+        "saves": sums[2] or 0,
+        "outbound_clicks": sums[3] or 0,
+    }
