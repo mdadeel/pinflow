@@ -4,8 +4,11 @@ import logging
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import APIRouter, File, UploadFile
+from typing import Literal
+
+from fastapi import APIRouter, File, HTTPException, UploadFile
 from pydantic import BaseModel, ConfigDict
+from sqlalchemy import or_
 
 from pinterest_automation.config.settings import settings
 from pinterest_automation.database import db as dbmod
@@ -119,3 +122,57 @@ async def upload_images(files: list[UploadFile] = File(...)):
             publish("image.uploaded", path=str(dest.resolve()), filename=name)
     return {"added": added, "duplicates": duplicates,
             "rejected": [r.model_dump() for r in rejected]}
+
+
+PIN_STATUSES = Literal["pending", "ready", "scheduled", "published", "failed"]
+MANUAL_MOVES = {("pending", "ready"), ("ready", "pending")}
+
+
+class StatusUpdate(BaseModel):
+    status: PIN_STATUSES
+
+
+@router.get("/pins")
+def list_pins(status: str | None = None, page: int = 1, per_page: int = 50,
+              q: str | None = None):
+    per_page = max(1, min(per_page, 200))
+    page = max(1, page)
+    with dbmod.get_session_factory()() as db:
+        query = db.query(Pin).order_by(Pin.created_at.desc(), Pin.id.desc())
+        if status:
+            query = query.filter(Pin.status == status)
+        if q:
+            like = f"%{q}%"
+            query = query.filter(or_(Pin.title.ilike(like), Pin.board_name.ilike(like),
+                                     Pin.content_category.ilike(like),
+                                     Pin.primary_keyword.ilike(like)))
+        total = query.count()
+        items = query.offset((page - 1) * per_page).limit(per_page).all()
+        out = {"items": [_to_pin_out(p) for p in items],
+               "total": total, "page": page, "per_page": per_page}
+    return out
+
+
+@router.get("/pins/{pin_id}")
+def get_pin(pin_id: int):
+    with dbmod.get_session_factory()() as db:
+        pin = db.get(Pin, pin_id)
+        if pin is None:
+            raise HTTPException(404)
+        return _to_pin_out(pin)
+
+
+@router.patch("/pins/{pin_id}/status")
+def move_pin(pin_id: int, body: StatusUpdate):
+    with dbmod.get_session_factory()() as db:
+        pin = db.get(Pin, pin_id)
+        if pin is None:
+            raise HTTPException(404)
+        if (pin.status, body.status) not in MANUAL_MOVES:
+            raise HTTPException(409, detail=f"manual move to '{body.status}' not allowed")
+        pin.status = body.status
+        db.commit()
+        db.refresh(pin)
+        out = _to_pin_out(pin)
+    publish("pin.updated", pin_id=out.id, status=out.status)
+    return out
