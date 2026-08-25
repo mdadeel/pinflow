@@ -34,6 +34,10 @@ class Pin(Base):
     pin_id_str: Mapped[str | None] = mapped_column(String(50))      # Pinterest pin id
     pin_url: Mapped[str | None] = mapped_column(String(500))
 
+    file_size: Mapped[int | None] = mapped_column(Integer)   # bytes
+    width: Mapped[int | None] = mapped_column(Integer)
+    height: Mapped[int | None] = mapped_column(Integer)
+
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, onupdate=utcnow)
 

@@ -31,6 +31,19 @@ class UTCDateTime(types.TypeDecorator):
         return value
 
 
+TRACKED_PIN_COLUMNS = {"file_size": "INTEGER", "width": "INTEGER", "height": "INTEGER"}
+
+
+def _ensure_pin_columns(engine) -> None:
+    """Lightweight ADD COLUMN migration for DBs created before these fields existed."""
+    with engine.connect() as conn:
+        existing = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(pins)")}
+    for name, ddl in TRACKED_PIN_COLUMNS.items():
+        if name not in existing:
+            with engine.begin() as conn:
+                conn.exec_driver_sql(f"ALTER TABLE pins ADD COLUMN {name} {ddl}")
+
+
 def make_session_factory(db_url: str) -> sessionmaker:
     from pinterest_automation.database import models  # noqa: F401 register tables
     engine = create_engine(db_url, connect_args={"check_same_thread": False})
@@ -41,6 +54,7 @@ def make_session_factory(db_url: str) -> sessionmaker:
         dbapi_conn.execute("PRAGMA journal_mode=WAL")
 
     Base.metadata.create_all(engine)
+    _ensure_pin_columns(engine)
     return sessionmaker(bind=engine, expire_on_commit=False)
 
 
