@@ -155,3 +155,33 @@ def test_run_due_backoff_and_cap(db, monkeypatch):
         assert low.status == "scheduled"
         assert low.scheduled_time > datetime(2026, 1, 10, 7, 0, tzinfo=timezone.utc)
         assert high.status == "failed"
+
+
+def test_run_due_boards_failure_backs_off_without_retry_count(db, monkeypatch):
+    """Infra failure (get_boards) must not burn pin retry budget."""
+    import pinterest_automation.services.scheduler as sched_mod
+    from pinterest_automation.database.models import Pin
+
+    def boom(token=None):
+        raise RuntimeError("api down")
+
+    monkeypatch.setattr(sched_mod, "get_boards", boom)
+    ids = _ready_pins(db, 2)
+    now = datetime.now(timezone.utc)
+    t0 = now - timedelta(minutes=1)
+    with db() as s:
+        for pid in ids:
+            p = s.get(Pin, pid)
+            p.status = "scheduled"
+            p.retry_count = 0
+            p.scheduled_time = t0
+        s.commit()
+
+        published, failed = sched_mod.run_due(s, now=now)
+        assert published == 0 and failed == 2
+        for pid in ids:
+            p = s.get(Pin, pid)
+            assert p.status == "scheduled"                    # not terminal
+            assert p.retry_count == 0                         # budget untouched
+            assert now < p.scheduled_time <= now + timedelta(minutes=16)  # ~15min backoff
+            assert "boards" in (p.error_message or "")

@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import func
 
@@ -20,7 +20,7 @@ def _aware_utc(dt: datetime) -> datetime:
     return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
 
 
-def _slot_taken_count(db, day: datetime.date, cfg: Settings) -> int:
+def _slot_taken_count(db, day: date, cfg: Settings) -> int:
     return (db.query(func.count(Pin.id))
               .filter(Pin.status == "scheduled",
                       func.strftime("%Y-%m-%d", Pin.scheduled_time) ==
@@ -36,7 +36,7 @@ def _next_free_slot(db, cfg: Settings, now: datetime):
             continue
         for hour in sorted(cfg.post_hours):
             slot = datetime(base.year, base.month, base.day, hour,
-                            minute=taken % 60,  # spread within the hour
+                            minute=taken % 60,  # ponytail: posts_per_day>60 wraps minutes via %60, cosmetic collisions only
                             tzinfo=timezone.utc)
             if slot <= now:
                 continue
@@ -74,15 +74,16 @@ def due_pins(db, now: datetime | None = None) -> list[Pin]:
 
 def run_due(db, now: datetime | None = None, max_posts: int | None = None,
             token: str | None = None) -> tuple[int, int]:
-    due = due_pins(db, now=now)[:max_posts or settings.posts_per_day]
+    due = due_pins(db, now=now)[:max_posts if max_posts is not None else settings.posts_per_day]
     if not due:
         return 0, 0
     try:
         boards = get_boards(token=token)
-    except Exception as e:  # noqa: BLE001 - no boards -> cannot resolve mappings; report all failed
+    except Exception as e:  # noqa: BLE001 - infra failure is not pin failure: no retry_count/status change
         log.error("run_due aborted, get_boards failed: %s", str(e)[:200])
         for pin in due:
-            pin.retry_count += 1
+            pin.scheduled_time = (pin.scheduled_time or utcnow()) + timedelta(minutes=BACKOFF_MINUTES)
+            pin.error_message = f"run aborted, boards unavailable: {str(e)[:200]}"
         db.commit()
         return 0, len(due)
 
