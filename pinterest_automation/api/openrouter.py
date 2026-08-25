@@ -29,6 +29,8 @@ def chat(messages: list[dict], **overrides) -> str:
         r = _post(payload, headers)
     except HTTPTooManyRetries as e:
         raise OpenRouterError(str(e)) from e
+    except httpx.HTTPStatusError as e:
+        raise OpenRouterError(f"HTTP {e.response.status_code}: {e.response.text[:300]}") from e
     try:
         return r.json()["choices"][0]["message"]["content"]
     except (KeyError, IndexError) as e:

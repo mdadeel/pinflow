@@ -11,8 +11,7 @@ log = logging.getLogger(__name__)
 BASE = "https://api.pinterest.com/v5"
 MIME = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp"}
 METRIC_TYPES = "IMPRESSIONS,CLICKS,SAVES,OUTBOUND_CLICKS"
-
-SUCCESS_STATUS = {200, 201}
+MAX_BOARD_PAGES = 20   # 100/page -> 2000 boards, far beyond need
 
 
 class PinterestError(RuntimeError):
@@ -32,13 +31,15 @@ def _call(method: str, url: str, token: str, **kw) -> httpx.Response:
                                   headers={"Authorization": f"Bearer {token}"}, **kw)
     except HTTPTooManyRetries as e:
         raise PinterestError(str(e)) from e
+    except httpx.HTTPStatusError as e:
+        raise PinterestError(f"{e.response.status_code}: {e.response.text[:300]}") from e
 
 
 def get_boards(token: str | None = None) -> list[dict]:
     tok = _token(token)
     boards: list[dict] = []
     bookmark: str | None = None
-    while True:
+    for _page in range(MAX_BOARD_PAGES):
         params: dict = {"page_size": 100}
         if bookmark:
             params["bookmark"] = bookmark
@@ -47,6 +48,7 @@ def get_boards(token: str | None = None) -> list[dict]:
         bookmark = data.get("bookmark")
         if not bookmark:
             return boards
+    raise PinterestError(f"boards pagination exceeded {MAX_BOARD_PAGES} pages")
 
 
 def create_pin(board_id: str, title: str, description: str, image_path: Path,
@@ -66,9 +68,8 @@ def create_pin(board_id: str, title: str, description: str, image_path: Path,
     }
     if link:
         payload["link"] = link
+    # non-2xx raises PinterestError via _call wrapping HTTPStatusError
     r = _call("POST", f"{BASE}/pins", tok, json=payload)
-    if r.status_code not in SUCCESS_STATUS:
-        raise PinterestError(f"create_pin failed {r.status_code}: {r.text[:300]}")
     log.info("created pin on board %s", board_id)
     return r.json()
 

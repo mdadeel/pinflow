@@ -33,6 +33,20 @@ def test_chat_wraps_transport_errors(monkeypatch):
         orr.chat([{"role": "user", "content": "hi"}])
 
 
+def test_chat_wraps_http_status_error(monkeypatch):
+    from pinterest_automation.api import openrouter as orr
+
+    def unauthorized(payload, headers):
+        r = httpx.Response(401, json={"error": "bad key"},
+                           request=httpx.Request("POST", orr.URL))
+        r.raise_for_status()
+
+    monkeypatch.setattr(orr, "_post", unauthorized)
+    import pytest
+    with pytest.raises(orr.OpenRouterError, match="HTTP 401"):
+        orr.chat([{"role": "user", "content": "hi"}])
+
+
 def test_image_data_url(tmp_path):
     from pinterest_automation.api.openrouter import image_data_url
     p = tmp_path / "i.png"

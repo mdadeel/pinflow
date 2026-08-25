@@ -71,15 +71,32 @@ def test_create_pin_link_omitted_when_none(monkeypatch, tmp_path):
     assert "link" not in captured["kw"]["json"]
 
 
-def test_create_pin_rejects_error_status(monkeypatch, tmp_path):
+def test_create_pin_wraps_http_error(monkeypatch, tmp_path):
     from pinterest_automation.api import pinterest as pt
-    monkeypatch.setattr(
-        pt, "request_with_retry",
-        lambda m, u, **k: httpx.Response(403, json={"message": "denied"}),
-    )
+
+    def unauthorized(method, url, **kw):
+        r = httpx.Response(401, json={"message": "bad token"},
+                           request=httpx.Request("POST", url))
+        r.raise_for_status()
+
+    monkeypatch.setattr(pt, "request_with_retry", unauthorized)
     img = tmp_path / "w.png"; img.write_bytes(b"x")
-    with pytest.raises(pt.PinterestError):
+    with pytest.raises(pt.PinterestError, match="401"):
         pt.create_pin(board_id="b", title="T", description="D", image_path=img, token="t")
+
+
+def test_get_boards_page_cap(monkeypatch):
+    from pinterest_automation.api import pinterest as pt
+    calls = []
+
+    def fake_req(method, url, **kw):
+        calls.append(url)
+        return httpx.Response(200, json={"items": [{"id": "b"}], "bookmark": "SAME"})
+
+    monkeypatch.setattr(pt, "request_with_retry", fake_req)
+    with pytest.raises(pt.PinterestError, match="pagination"):
+        pt.get_boards(token="t")
+    assert len(calls) == pt.MAX_BOARD_PAGES
 
 
 def test_create_pin_wraps_retry_exhaustion(monkeypatch, tmp_path):
