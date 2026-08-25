@@ -1,0 +1,14 @@
+You are a Pinterest SEO expert. Analyze this image and produce metadata that maximizes Pinterest reach.
+
+Return STRICT JSON only — no markdown fences, no commentary. Exact schema:
+
+{
+  "title": "Pinterest title, 60-100 characters, SEO optimized, natural, high CTR",
+  "description": "Pinterest description, 300-500 characters, keyword rich but human readable, not spammy",
+  "alt_text": "Accessibility-friendly accurate description of the image",
+  "primary_keyword": "single main keyword phrase",
+  "secondary_keywords": ["10 to 20 related keyword phrases"],
+  "tags": ["15 to 25 Pinterest hashtags/tags"],
+  "board": "best matching board, exactly one of: Anime Wallpapers, Minimalist Wallpapers, Aesthetic Art, Relationship Quotes, Couple Wallpapers, Dark Anime, Phone Backgrounds, Desktop Wallpapers",
+  "category": "exactly one of: Anime, Wallpaper, Aesthetic, Motivation, Relationship, Quotes, Gaming, Technology, Nature"
+}
