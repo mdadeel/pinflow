@@ -1,9 +1,9 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Float, Integer, String, Text, UniqueConstraint
+from sqlalchemy import ForeignKey, Float, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
-from pinterest_automation.database.db import Base, utcnow
+from pinterest_automation.database.db import Base, UTCDateTime, utcnow
 
 
 class Pin(Base):
@@ -28,14 +28,14 @@ class Pin(Base):
     error_message: Mapped[str | None] = mapped_column(Text)
     retry_count: Mapped[int] = mapped_column(Integer, default=0)
 
-    ai_called_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    scheduled_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
-    published_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ai_called_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    scheduled_time: Mapped[datetime | None] = mapped_column(UTCDateTime, index=True)
+    published_time: Mapped[datetime | None] = mapped_column(UTCDateTime)
     pin_id_str: Mapped[str | None] = mapped_column(String(50))      # Pinterest pin id
     pin_url: Mapped[str | None] = mapped_column(String(500))
 
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, onupdate=utcnow)
 
 
 class AnalyticsRow(Base):
@@ -49,4 +49,4 @@ class AnalyticsRow(Base):
     saves: Mapped[int] = mapped_column(Integer, default=0)
     outbound_clicks: Mapped[int] = mapped_column(Integer, default=0)
     ctr: Mapped[float] = mapped_column(Float, default=0.0)
-    last_updated: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    last_updated: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
