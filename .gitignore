@@ -9,3 +9,4 @@ venv/
 .venv/
 mini.md
 *.md.bak
+pinterest_automation/logs/publish.lock
