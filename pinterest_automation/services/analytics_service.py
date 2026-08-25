@@ -1,5 +1,5 @@
 import logging
-from datetime import date, timedelta
+from datetime import datetime, timedelta, timezone
 
 from pinterest_automation.api.pinterest import get_pin_analytics
 from pinterest_automation.database.db import utcnow
@@ -20,7 +20,7 @@ def sync_published(db, token: str | None = None,
               .limit(limit)
               .all())
     synced = 0
-    today = date.today()
+    today = datetime.now(timezone.utc).date()
     for pin in pins:
         start = pin.published_time.date()
         try:

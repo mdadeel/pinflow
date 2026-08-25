@@ -6,10 +6,10 @@ import httpx
 
 from pinterest_automation.config.settings import settings
 from pinterest_automation.utils.http_retry import HTTPTooManyRetries, request_with_retry
+from pinterest_automation.utils.media_types import MIME
 
 log = logging.getLogger(__name__)
 URL = "https://openrouter.ai/api/v1/chat/completions"
-MIME = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp"}
 
 
 class OpenRouterError(RuntimeError):

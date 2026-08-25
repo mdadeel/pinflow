@@ -27,6 +27,45 @@ def test_raises_after_exhaustion(monkeypatch):
         hr.request_with_retry("GET", "https://x.test")
 
 
+def test_no_sleep_on_final_attempt(monkeypatch):
+    import pinterest_automation.utils.http_retry as hr
+    sleeps = []
+    monkeypatch.setattr(hr.httpx, "request",
+                        lambda m, u, **k: httpx.Response(429, request=httpx.Request("GET", u)))
+    monkeypatch.setattr(hr.time, "sleep", sleeps.append)
+    with pytest.raises(hr.HTTPTooManyRetries):
+        hr.request_with_retry("GET", "https://x.test")     # tries=3
+    assert len(sleeps) == 2                                # slept between attempts only
+
+
+def test_retry_after_http_date_falls_back_to_delay(monkeypatch):
+    import pinterest_automation.utils.http_retry as hr
+    calls = []
+
+    def fake(method, url, **kw):
+        calls.append(1)
+        return httpx.Response(429, headers={"retry-after": "Wed, 21 Oct 2015 07:28:00 GMT"},
+                              request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(hr.httpx, "request", fake)
+    monkeypatch.setattr(hr.time, "sleep", lambda s: None)
+    with pytest.raises(hr.HTTPTooManyRetries):
+        hr.request_with_retry("GET", "https://x.test")
+    assert len(calls) == 3                                 # parsed failure must not crash
+
+
+def test_negative_retry_after_clamped_to_delay(monkeypatch):
+    import pinterest_automation.utils.http_retry as hr
+    sleeps = []
+    monkeypatch.setattr(hr.httpx, "request",
+                        lambda m, u, **k: httpx.Response(429, headers={"retry-after": "-5"},
+                                                         request=httpx.Request("GET", u)))
+    monkeypatch.setattr(hr.time, "sleep", sleeps.append)
+    with pytest.raises(hr.HTTPTooManyRetries):
+        hr.request_with_retry("GET", "https://x.test")
+    assert all(s > 0 for s in sleeps)                      # negatives replaced by positive delay
+
+
 def test_no_retry_on_400(monkeypatch):
     import pinterest_automation.utils.http_retry as hr
     calls = []

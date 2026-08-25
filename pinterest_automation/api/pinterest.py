@@ -6,10 +6,10 @@ import httpx
 
 from pinterest_automation.config.settings import settings
 from pinterest_automation.utils.http_retry import HTTPTooManyRetries, request_with_retry
+from pinterest_automation.utils.media_types import MIME
 
 log = logging.getLogger(__name__)
 BASE = "https://api.pinterest.com/v5"
-MIME = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp"}
 METRIC_TYPES = "IMPRESSIONS,CLICKS,SAVES,OUTBOUND_CLICKS"
 MAX_BOARD_PAGES = 20   # 100/page -> 2000 boards, far beyond need
 

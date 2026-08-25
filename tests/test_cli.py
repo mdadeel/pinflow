@@ -138,6 +138,24 @@ def test_publish_lock_excludes_concurrent_runs(db, monkeypatch, tmp_path):
         assert rc == 1                       # lock busy -> nonzero, no hang
 
 
+def test_lock_busy_is_distinct_exception(db, monkeypatch, tmp_path):
+    """LockBusy is a dedicated exception raised while the lock is held."""
+    from pinterest_automation import main
+
+    assert issubclass(main.LockBusy, Exception)
+    monkeypatch.setattr(main.settings, "log_dir", tmp_path / "logs")
+    monkeypatch.setattr(main.settings, "watch_dir", tmp_path / "w")
+
+    with main._publish_lock():
+        with pytest.raises(main.LockBusy):
+            with main._publish_lock():
+                pass
+        # sibling RuntimeError subclasses must not be mislabeled as lock-busy
+        from pinterest_automation.api.pinterest import PinterestError
+        assert not issubclass(PinterestError, main.LockBusy)
+        assert not issubclass(main.LockBusy, RuntimeError)
+
+
 def test_run_argparse_bad_command_exits(monkeypatch):
     from pinterest_automation import main
     with pytest.raises(SystemExit):

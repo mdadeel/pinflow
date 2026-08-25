@@ -126,3 +126,21 @@ def test_pinterest_error_recorded(db, happy_pt, monkeypatch):
         pin = s.get(Pin, pid)
         assert publish_pin(s, pin) is False
         assert "denied" in pin.error_message and pin.status == "scheduled"
+
+
+def test_missing_id_treated_as_api_failure(db, happy_pt, monkeypatch):
+    """A 2xx response without an id must not be written as a published pin."""
+    from pinterest_automation.database.models import Pin
+    from pinterest_automation.processors import uploader
+    from pinterest_automation.processors.uploader import publish_pin
+    monkeypatch.setattr(uploader, "get_boards", lambda token=None: BOARDS)
+    monkeypatch.setattr(uploader, "create_pin",
+                        lambda *a, **k: {"url": "https://pin.it/x"})   # no id
+    pid = _scheduled_pin(db, happy_pt[0])
+    with db() as s:
+        pin = s.get(Pin, pid)
+        assert publish_pin(s, pin) is False
+        assert pin.retry_count == 1
+        assert pin.status == "scheduled"
+        assert pin.pin_id_str is None and pin.pin_url is None
+        assert "no id" in pin.error_message.lower()

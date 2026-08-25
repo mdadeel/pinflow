@@ -22,17 +22,26 @@ def request_with_retry(method: str, url: str, *, tries: int = 3,
             if r.status_code not in RETRYABLE_STATUS:
                 r.raise_for_status()
                 return r
-            wait = float(r.headers.get("retry-after", delay))
             last = f"HTTP {r.status_code}"
-            log.warning("%s %s -> %s, retry %d/%d in %.0fs",
-                        method, url, r.status_code, attempt, tries, wait)
-            time.sleep(wait)
+            if attempt < tries:
+                # Retry-After may be seconds ("30") or an HTTP-date; bad/negative -> backoff delay
+                try:
+                    wait = float(r.headers.get("retry-after"))
+                except (TypeError, ValueError):
+                    wait = delay
+                else:
+                    if wait < 0:
+                        wait = delay
+                log.warning("%s %s -> %s, retry %d/%d in %.0fs",
+                            method, url, r.status_code, attempt, tries, wait)
+                time.sleep(wait)
         except httpx.HTTPStatusError:
             raise                      # non-retryable HTTP error -> caller sees it
         except httpx.HTTPError as e:
             last = e
-            log.warning("network error %r on %s %s, retry %d/%d in %.0fs",
-                        e, method, url, attempt, tries, delay)
-            time.sleep(delay)
+            if attempt < tries:
+                log.warning("network error %r on %s %s, retry %d/%d in %.0fs",
+                            e, method, url, attempt, tries, delay)
+                time.sleep(delay)
         delay *= 2
     raise HTTPTooManyRetries(f"{method} {url} failed after {tries} attempts ({last})")

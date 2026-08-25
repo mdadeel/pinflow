@@ -32,6 +32,9 @@ def publish_pin(db, pin: Pin, token: str | None = None,
     try:
         res = create_pin(board_id, pin.title, pin.description or "",
                          Path(pin.image_path), token=token)
+        if not res.get("id"):
+            # 2xx without an id is still a failed create -> same retry path
+            raise ValueError("create_pin returned no id")
     except Exception as e:  # noqa: BLE001 - keep status; scheduler retries with backoff
         pin.retry_count += 1
         pin.error_message = str(e)[:500]

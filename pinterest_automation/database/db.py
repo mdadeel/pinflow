@@ -38,6 +38,7 @@ def make_session_factory(db_url: str) -> sessionmaker:
     @event.listens_for(engine, "connect")
     def _fk_on(dbapi_conn, _):
         dbapi_conn.execute("PRAGMA foreign_keys=ON")
+        dbapi_conn.execute("PRAGMA journal_mode=WAL")
 
     Base.metadata.create_all(engine)
     return sessionmaker(bind=engine, expire_on_commit=False)

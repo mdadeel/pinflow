@@ -20,6 +20,10 @@ from pinterest_automation.services.scheduler import assign_schedule_times, run_d
 log = logging.getLogger(__name__)
 
 
+class LockBusy(Exception):
+    """Raised when another process already holds the publish lock."""
+
+
 @contextlib.contextmanager
 def _publish_lock():
     # lock file lives next to the logs; default log_dir == pinterest_automation/logs
@@ -30,7 +34,7 @@ def _publish_lock():
         try:
             fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
-            raise RuntimeError("another run is publishing")
+            raise LockBusy("another run is publishing")
         yield
     finally:
         fh.close()
@@ -72,7 +76,7 @@ def cmd_publish_now(pin_id: int) -> int:
     try:
         with _publish_lock():
             ok = publish_pin(db, pin)
-    except RuntimeError as e:
+    except LockBusy as e:
         print(str(e))
         return 1
     print("published" if ok else f"failed: {pin.error_message}")
@@ -87,7 +91,7 @@ def cmd_run_once() -> int:
         with _publish_lock():
             db = dbmod.get_session_factory()()
             pub, failed = run_due(db)
-    except RuntimeError as e:
+    except LockBusy as e:
         print(str(e))
         return 1
     print(f"published {pub}, failed {failed}")
@@ -108,7 +112,7 @@ def cmd_daemon() -> None:
             with _publish_lock():
                 pub, failed = run_due(db)
             log.info("cycle done: published %d, failed %d", pub, failed)
-        except RuntimeError:
+        except LockBusy:
             log.warning("cycle skipped: another run is publishing")
 
     sched.add_job(cycle, "interval", minutes=10, id="cycle", max_instances=1)

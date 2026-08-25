@@ -112,3 +112,24 @@ def test_batch_size_drives_loop(db, fake_gen, tmp_path, monkeypatch):
         # batch_size=2: first query takes 2, loop continues until fewer than take returned
         n = analyze_pending(s)
         assert n == 5
+
+
+def test_terminates_when_all_fail(db, tmp_path, monkeypatch):
+    from pinterest_automation.config.settings import settings
+    from pinterest_automation.database.models import Pin
+    from pinterest_automation.services import analyzer
+    from pinterest_automation.services.analyzer import analyze_pending
+
+    def always_boom(p):
+        raise RuntimeError("api down")
+
+    monkeypatch.setattr(settings, "batch_size", 2)
+    monkeypatch.setattr(analyzer, "generate_metadata", always_boom)
+    with db() as s:
+        for i in range(4):
+            p = tmp_path / f"f{i}.png"; p.write_bytes(b"x")
+            s.add(Pin(image_path=str(p), image_hash=f"hf{i}"))
+        s.commit()
+        assert analyze_pending(s) == 0                     # returns, does not spin forever
+        rows = s.query(Pin).all()
+        assert all(r.status == "pending" and r.retry_count == 1 for r in rows)
