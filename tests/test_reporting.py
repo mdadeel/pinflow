@@ -1,5 +1,5 @@
 import json
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 
 import pytest
 
@@ -71,6 +71,30 @@ def test_weekly_skips_null_group_keys(db):
     assert all(r["category"] is not None for r in rep["top_categories"])
     assert all(r["keyword"] is not None for r in rep["best_keywords"])
     assert all(r["board_name"] is not None for r in rep["best_boards"])
+
+
+def test_weekly_excludes_out_of_window(db):
+    from pinterest_automation.database.models import AnalyticsRow, Pin
+    from pinterest_automation.services.reporting import weekly_report
+    day_start = datetime.combine(date.today(), time.min, tzinfo=timezone.utc)
+    with db() as s:
+        s.add(Pin(image_path="/old.png", image_hash="hold", status="published",
+                  content_category="OldCat", primary_keyword="old kw",
+                  board_name="Old Board",
+                  published_time=day_start - timedelta(days=10)))
+        s.add(Pin(image_path="/fut.png", image_hash="hfut", status="scheduled",
+                  content_category="FutureCat", primary_keyword="future kw",
+                  board_name="Future Board",
+                  published_time=day_start + timedelta(days=1)))
+        s.commit()
+        for p in s.query(Pin):
+            s.add(AnalyticsRow(pin_id=p.id, impressions=999, clicks=99))
+        s.commit()
+    with db() as s:
+        rep = weekly_report(s, date.today())
+    assert rep["top_categories"] == []
+    assert rep["best_keywords"] == []
+    assert rep["best_boards"] == []
 
 
 def test_write_report_file(db):

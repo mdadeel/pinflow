@@ -1,20 +1,18 @@
 import json
 import logging
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 
 from sqlalchemy import func
 
 from pinterest_automation.config.settings import settings
-from pinterest_automation.database.db import utcnow
 from pinterest_automation.database.models import AnalyticsRow, Pin
 
 log = logging.getLogger(__name__)
 
 
 def _day_bounds_utc(day: date):
-    start = utcnow().replace(year=day.year, month=day.month, day=day.day,
-                             hour=0, minute=0, second=0, microsecond=0)
+    start = datetime.combine(day, time.min, tzinfo=timezone.utc)
     return start, start + timedelta(days=1)
 
 
@@ -36,12 +34,13 @@ def daily_report(db, day: date) -> dict:
             "pins_failed": failed, "ai_calls": ai_calls}
 
 
-def _top(db, column, label: str, since, n: int = 5) -> list[dict]:
+def _top(db, column, label: str, since, until, n: int = 5) -> list[dict]:
     rows = (db.query(column.label("k"),
                      func.sum(AnalyticsRow.impressions).label("imp"),
                      func.sum(AnalyticsRow.clicks).label("clk"))
               .join(Pin, Pin.id == AnalyticsRow.pin_id)
-              .filter(Pin.published_time >= since, column.is_not(None))
+              .filter(Pin.published_time >= since, Pin.published_time < until,
+                      column.is_not(None))
               .group_by(column)
               .order_by(func.sum(AnalyticsRow.clicks).desc())
               .limit(n)
@@ -50,13 +49,13 @@ def _top(db, column, label: str, since, n: int = 5) -> list[dict]:
 
 
 def weekly_report(db, end_day: date) -> dict:
-    end_start, _ = _day_bounds_utc(end_day)
-    since = end_start - timedelta(days=7)
+    end_start, until = _day_bounds_utc(end_day)
+    since = end_start - timedelta(days=6)   # trailing 7 calendar days incl end_day
     return {
         "week_ending": end_day.isoformat(),
-        "top_categories": _top(db, Pin.content_category, "category", since),
-        "best_keywords": _top(db, Pin.primary_keyword, "keyword", since),
-        "best_boards": _top(db, Pin.board_name, "board_name", since),
+        "top_categories": _top(db, Pin.content_category, "category", since, until),
+        "best_keywords": _top(db, Pin.primary_keyword, "keyword", since, until),
+        "best_boards": _top(db, Pin.board_name, "board_name", since, until),
     }
 
 
