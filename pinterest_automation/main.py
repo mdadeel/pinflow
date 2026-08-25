@@ -121,6 +121,13 @@ def cmd_daemon() -> None:
         sched.shutdown()
 
 
+def cmd_sync_analytics(days: int) -> None:
+    db = dbmod.get_session_factory()()
+    from pinterest_automation.services.analytics_service import sync_published
+    n = sync_published(db, lookback_days=days)
+    print(f"synced {n} pins")
+
+
 def cmd_serve() -> None:
     import uvicorn
     uvicorn.run("pinterest_automation.dashboard.app:app", host="127.0.0.1", port=8000)
@@ -137,6 +144,8 @@ def run(argv: list[str] | None = None) -> int:
     p_sc.add_argument("--limit", type=int)
     p_pn = sub.add_parser("publish-now")
     p_pn.add_argument("--id", type=int, required=True)
+    p_sa = sub.add_parser("sync-analytics")
+    p_sa.add_argument("--days", type=int, default=30)
     sub.add_parser("run-once")
     sub.add_parser("daemon")
     sub.add_parser("serve")
@@ -153,6 +162,9 @@ def run(argv: list[str] | None = None) -> int:
         return 0
     if args.cmd == "publish-now":
         return cmd_publish_now(args.id)
+    if args.cmd == "sync-analytics":
+        cmd_sync_analytics(args.days)
+        return 0
     if args.cmd == "run-once":
         return cmd_run_once()
     if args.cmd == "daemon":
