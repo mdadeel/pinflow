@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ year }}-{{ "%02d" % month }}
+  <small><a href="/calendar?month={{ prev }}">← prev</a> <a href="/calendar?month={{ next }}">next →</a></small>
+</h1>
+<div class="cal-grid">
+  {% for d in range(1, days + 1) %}
+  <div class="cal-day">
+    <b>{{ d }}</b>
+    {% for p in by_day.get(d, []) %}
+      <div {% if p.status == "scheduled" %}class="muted"{% endif %}>
+        {{ (p.scheduled_time or p.published_time).strftime("%H:%M") }} — {{ p.title or "" }}
+      </div>
+    {% endfor %}
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

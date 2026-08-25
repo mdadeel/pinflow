@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Overview</h1>
+<div class="cards">
+  <div class="card"><b>{{ total_images }}</b>Total Images</div>
+  <div class="card"><b>{{ pending }}</b>Pending Pins</div>
+  <div class="card"><b>{{ scheduled }}</b>Scheduled Pins</div>
+  <div class="card"><b>{{ published }}</b>Published Pins</div>
+  <div class="card"><b>{{ failed }}</b>Failed Pins</div>
+</div>
+{% endblock %}
