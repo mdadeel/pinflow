@@ -54,3 +54,12 @@ class AnalyticsRow(Base):
     outbound_clicks: Mapped[int] = mapped_column(Integer, default=0)
     ctr: Mapped[float] = mapped_column(Float, default=0.0)
     last_updated: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+
+
+class LearningSignal(Base):
+    __tablename__ = "learning_signals"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    action: Mapped[str] = mapped_column(String(64), nullable=False)
+    pin_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)

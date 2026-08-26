@@ -12,7 +12,7 @@ from sqlalchemy import func, or_
 
 from pinterest_automation.config.settings import settings
 from pinterest_automation.database import db as dbmod
-from pinterest_automation.database.models import AnalyticsRow, Pin
+from pinterest_automation.database.models import AnalyticsRow, LearningSignal, Pin
 from pinterest_automation.services import analyzer
 from pinterest_automation.services import scheduler
 from pinterest_automation.services.events import publish
@@ -407,3 +407,29 @@ def analytics_summary():
         "series": series,
         "ctr": ctr,
     }
+
+
+class LearningSignalIn(BaseModel):
+    action: str
+    pin_id: int | None = None
+
+
+@router.post("/learning", status_code=201)
+def record_learning_signal(body: LearningSignalIn):
+    with dbmod.get_session_factory()() as db:
+        sig = LearningSignal(action=body.action, pin_id=body.pin_id)
+        db.add(sig)
+        db.commit()
+        db.refresh(sig)
+    return {"id": sig.id, "action": sig.action, "pin_id": sig.pin_id}
+
+
+@router.get("/learning")
+def learning_summary():
+    with dbmod.get_session_factory()() as db:
+        rows = db.query(LearningSignal.action,
+                        func.count(LearningSignal.id)).group_by(
+                            LearningSignal.action).all()
+        counts = {action: int(n) for action, n in rows}
+        total = db.query(func.count(LearningSignal.id)).scalar() or 0
+    return {"counts": counts, "total": total}
