@@ -304,7 +304,7 @@ def stats():
 @router.get("/analytics")
 def analytics_summary():
     # Pin has no impressions/saves/clicks columns (they live on AnalyticsRow),
-    # so top_pins/ctr are empty/zero and the series only counts published pins.
+    # so top_pins/ctr/series clicks are aggregated from AnalyticsRow.
     with dbmod.get_session_factory()() as db:
         total = db.query(func.count(Pin.id)).scalar() or 0
         counts = dict(db.query(Pin.status, func.count(Pin.id)).group_by(Pin.status).all())
@@ -318,8 +318,40 @@ def analytics_summary():
             buckets[d] = buckets.get(d, 0) + 1
 
         today = dbmod.utcnow().date()
-        series = [{"date": d.isoformat(), "published": buckets.get(d.isoformat(), 0)}
+
+        # Per-day clicks/impressions from AnalyticsRow (last_updated carries the date).
+        day_rows = db.query(func.date(AnalyticsRow.last_updated).label("d"),
+                            func.sum(AnalyticsRow.clicks).label("clk"),
+                            func.sum(AnalyticsRow.impressions).label("imp")) \
+            .filter(AnalyticsRow.last_updated >= since).group_by("d").all()
+        clk_buckets = {r.d: int(r.clk or 0) for r in day_rows}
+        imp_buckets = {r.d: int(r.imp or 0) for r in day_rows}
+
+        series = [{"date": d.isoformat(),
+                   "published": buckets.get(d.isoformat(), 0),
+                   "clicks": clk_buckets.get(d.isoformat(), 0),
+                   "impressions": imp_buckets.get(d.isoformat(), 0)}
                   for d in (today - timedelta(days=i) for i in range(29, -1, -1))]
+
+        # Top 5 pins by total clicks.
+        top_rows = db.query(Pin.id, Pin.title,
+                            func.sum(AnalyticsRow.impressions).label("imp"),
+                            func.sum(AnalyticsRow.saves).label("sav"),
+                            func.sum(AnalyticsRow.clicks).label("clk")) \
+            .join(AnalyticsRow, AnalyticsRow.pin_id == Pin.id) \
+            .group_by(Pin.id, Pin.title) \
+            .order_by(func.sum(AnalyticsRow.clicks).desc()) \
+            .limit(5).all()
+        top_pins = [{"id": r.id, "title": r.title,
+                     "impressions": int(r.imp or 0), "saves": int(r.sav or 0),
+                     "clicks": int(r.clk or 0)} for r in top_rows]
+
+        # CTR = total clicks / total impressions across all AnalyticsRow.
+        agg = db.query(func.sum(AnalyticsRow.clicks),
+                       func.sum(AnalyticsRow.impressions)).first()
+        total_clicks = int(agg[0] or 0)
+        total_impr = int(agg[1] or 0)
+        ctr = (total_clicks / total_impr) if total_impr else 0.0
 
     return {
         "totals": {
@@ -331,7 +363,7 @@ def analytics_summary():
             "failed": counts.get("failed", 0),
         },
         "by_status": counts,
-        "top_pins": [],
+        "top_pins": top_pins,
         "series": series,
-        "ctr": 0.0,
+        "ctr": ctr,
     }
