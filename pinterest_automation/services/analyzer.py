@@ -69,3 +69,17 @@ def analyze_pending(db, limit: int | None = None) -> int:
         if len(pins) < take:
             break
     return ok
+
+
+def regenerate_pin(db, pin_id: int) -> Pin | None:
+    pin = db.get(Pin, pin_id)
+    if pin is None:
+        return None
+    if not Path(pin.image_path).is_file():
+        pin.status = "failed"
+        pin.error_message = "image file missing"
+        db.commit()
+        raise FileNotFoundError(f"image missing for pin {pin_id}")
+    _apply(pin, generate_metadata(Path(pin.image_path)))
+    db.commit()
+    return pin

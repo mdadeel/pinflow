@@ -13,6 +13,7 @@ from sqlalchemy import func, or_
 from pinterest_automation.config.settings import settings
 from pinterest_automation.database import db as dbmod
 from pinterest_automation.database.models import AnalyticsRow, Pin
+from pinterest_automation.services import analyzer
 from pinterest_automation.services.events import publish
 from pinterest_automation.utils.media_types import EXTENSIONS, image_dimensions
 
@@ -222,6 +223,19 @@ def move_pin(pin_id: int, body: StatusUpdate):
         db.refresh(pin)
         out = _to_pin_out(pin)
     publish("pin.updated", pin_id=out.id, status=out.status)
+    return out
+
+
+@router.post("/pins/{pin_id}/regenerate")
+def regenerate(pin_id: int):
+    with dbmod.get_session_factory()() as db:
+        try:
+            pin = analyzer.regenerate_pin(db, pin_id)
+        except FileNotFoundError:
+            raise HTTPException(409, detail="image file missing for pin")
+        if pin is None:
+            raise HTTPException(404)
+        out = _to_pin_out(pin)
     return out
 
 
