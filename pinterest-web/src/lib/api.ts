@@ -17,6 +17,7 @@ export interface Pin {
   width: number | null
   height: number | null
   created_at: string
+  scheduled_time: string | null
 }
 
 export interface PinListResponse {
