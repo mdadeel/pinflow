@@ -23,6 +23,21 @@ router = APIRouter(prefix="/api")
 
 MAX_UPLOAD_BYTES = 30 * 1024 * 1024
 
+# Max Hamming distance for a candidate to count as a duplicate. `image_hash` is a
+# 256-bit SHA256 content hash (64 hex chars), not a perceptual hash, so near-zero
+# distance means byte-identical content. Tune for perceptual hashes if a phash
+# column is ever added at ingestion.
+DUPLICATE_HASH_THRESHOLD = 8
+MAX_DUPLICATE_RESULTS = 10
+
+
+def _hash_hamming(a: str, b: str) -> int | None:
+    """Hamming distance between two hex hashes, or None if not comparable."""
+    try:
+        return (int(a, 16) ^ int(b, 16)).bit_count()
+    except ValueError:
+        return None
+
 
 class RejectedFile(BaseModel):
     filename: str
@@ -200,6 +215,31 @@ def list_pins(status: str | None = None, page: int = 1, per_page: int = 50,
         out = {"items": [_to_pin_out(p) for p in items],
                "total": total, "page": page, "per_page": per_page}
     return out
+
+
+@router.get("/pins/{pin_id}/duplicates")
+def find_duplicates(pin_id: int):
+    with dbmod.get_session_factory()() as db:
+        pin = db.get(Pin, pin_id)
+        if pin is None:
+            raise HTTPException(404)
+        target = pin.image_hash
+        if not target:
+            return []
+        others = db.query(Pin).filter(Pin.id != pin_id,
+                                      Pin.image_hash != None,
+                                      Pin.image_hash != "").all()
+        max_bits = len(target) * 4
+        candidates = []
+        for o in others:
+            dist = _hash_hamming(target, o.image_hash)
+            if dist is None or dist > DUPLICATE_HASH_THRESHOLD:
+                continue
+            candidates.append((o, 1 - dist / max_bits))
+        candidates.sort(key=lambda c: c[1], reverse=True)
+        return [{"id": o.id, "title": o.title,
+                 "score": round(score, 4), "status": o.status}
+                for o, score in candidates[:MAX_DUPLICATE_RESULTS]]
 
 
 @router.get("/pins/{pin_id}")
