@@ -1,4 +1,5 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { ActivityFeed } from "@/components/activity-feed"
+import { StatCards } from "@/components/stat-cards"
 
 export default function HomePage() {
   return (
@@ -7,26 +8,12 @@ export default function HomePage() {
       <p className="mt-2 text-muted-foreground">
         Monitor your queue and publishing activity.
       </p>
-      <div className="mt-6 grid gap-4 sm:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Queue health</CardTitle>
-            <CardDescription>Live count from the API</CardDescription>
-          </CardHeader>
-          <CardContent className="text-muted-foreground">
-            Wired up in Task 8.
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Recent activity</CardTitle>
-            <CardDescription>Last 24 hours</CardDescription>
-          </CardHeader>
-          <CardContent className="text-muted-foreground">
-            Wired up in Task 8.
-          </CardContent>
-        </Card>
-      </div>
+      <section className="mt-6">
+        <StatCards />
+      </section>
+      <section className="mt-6">
+        <ActivityFeed />
+      </section>
     </div>
   )
 }
