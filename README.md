@@ -69,7 +69,7 @@ The pattern is one client module (`pinterest_automation/api/<platform>.py`) plus
 
 ## Platform UI (`pinterest-web`)
 
-A Next.js 16 SPA providing drag-drop upload, a Kanban queue, overview stats, and a live activity feed. It talks to the same FastAPI app that serves the legacy analytics dashboard (`serve` on `:8000`).
+A Next.js 16 SPA providing drag-drop upload, a Kanban queue, an editor workspace, a visual calendar scheduler, an analytics center, and a live activity feed. It talks to the same FastAPI app that serves the legacy analytics dashboard (`serve` on `:8000`).
 
 ### Run
 
@@ -90,6 +90,14 @@ The frontend expects the API at `NEXT_PUBLIC_API_URL` (default `http://localhost
 - Kanban queue: drag pins between **Uploaded (`pending`) / Ready (`ready`) / Scheduled (`scheduled`) / Published (`published`) / Failed (`failed`)**. Only `pending ↔ ready` is a manual move; other transitions are pipeline-driven and return `409`.
 - Overview stat cards: totals, per-status counts, clicks / saves / impressions.
 - Live activity feed over WebSocket (`/ws`), seeded from recent events and reconnecting with backoff.
+
+### Phase 2 features
+- **Editor** (`/pin/[id]`): review the generated thumbnail + SEO (title, description, alt text, keywords, tags, board, category). Save edits (`PATCH /api/pins/{id}`, only allowed from `pending`/`ready`), **Regenerate** AI metadata (`POST /api/pins/{id}/regenerate`), and **Approve** to schedule (`POST /api/pins/{id}/approve`, only from `ready`). A "Possible duplicates" panel lists near-identical images via content-hash comparison.
+- **Visual calendar** (`/calendar`): month grid of scheduled/published pins; drag a scheduled pin to another day to reschedule (`PATCH /api/pins/{id}/schedule`).
+- **Analytics center** (`/analytics`): total/status stat cards, status breakdown, top pins by clicks, 30-day published/clicks sparklines (hand-rolled SVG), and a "Learning signals" card aggregating human feedback.
+- **Learning loop**: Approve/Regenerate/Save in the editor record a feedback signal (`POST /api/learning`); counts are surfaced in Analytics.
+
+> Note: "duplicate detection" is exact/near-exact via the stored SHA-256 `image_hash` (Hamming distance over the hash bits). True perceptual (resized/cropped) near-duplicate detection would require a pHash dependency + ingestion change and is out of scope for this build.
 
 ### Frontend tests / build
 
