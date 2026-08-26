@@ -1,4 +1,4 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { UploadZone } from "@/components/upload-zone"
 
 export default function UploadPage() {
   return (
@@ -7,15 +7,9 @@ export default function UploadPage() {
       <p className="mt-2 text-muted-foreground">
         Drop images and let the platform auto-describe them.
       </p>
-      <Card className="mt-6">
-        <CardHeader>
-          <CardTitle>Drop zone</CardTitle>
-          <CardDescription>Wired up in Task 9.</CardDescription>
-        </CardHeader>
-        <CardContent className="text-muted-foreground">
-          Multi-file upload with progress lands in Task 9.
-        </CardContent>
-      </Card>
+      <div className="mt-6">
+        <UploadZone />
+      </div>
     </div>
   )
 }
