@@ -42,6 +42,8 @@ class PinOut(BaseModel):
     tags: list[str] | None = None
     board_name: str | None = None
     content_category: str | None = None
+    scheduled_time: str | None = None
+    published_time: str | None = None
     file_size: int | None = None
     width: int | None = None
     height: int | None = None
@@ -51,6 +53,12 @@ class PinOut(BaseModel):
 def _to_pin_out(pin: Pin) -> PinOut:
     def _list(raw: str | None) -> list[str] | None:
         return json.loads(raw) if raw else None
+
+    def _iso(dt) -> str | None:
+        if not dt:
+            return None
+        s = dt.isoformat()
+        return s[:-6] if s.endswith("+00:00") else s
 
     return PinOut(
         id=pin.id,
@@ -65,6 +73,8 @@ def _to_pin_out(pin: Pin) -> PinOut:
         tags=_list(pin.tags),
         board_name=pin.board_name,
         content_category=pin.content_category,
+        scheduled_time=_iso(pin.scheduled_time),
+        published_time=_iso(pin.published_time),
         file_size=pin.file_size,
         width=pin.width,
         height=pin.height,
@@ -130,6 +140,43 @@ MANUAL_MOVES = {("pending", "ready"), ("ready", "pending")}
 
 class StatusUpdate(BaseModel):
     status: PIN_STATUSES
+
+
+EDITABLE_STATUSES = ("pending", "ready")
+
+
+class PinEdit(BaseModel):
+    title: str | None = None
+    description: str | None = None
+    alt_text: str | None = None
+    primary_keyword: str | None = None
+    secondary_keywords: list[str] | None = None
+    tags: list[str] | None = None
+    board_name: str | None = None
+    content_category: str | None = None
+
+
+@router.patch("/pins/{pin_id}")
+def edit_pin(pin_id: int, body: PinEdit):
+    with dbmod.get_session_factory()() as db:
+        pin = db.get(Pin, pin_id)
+        if pin is None:
+            raise HTTPException(404)
+        if pin.status not in EDITABLE_STATUSES:
+            raise HTTPException(409, detail=f"pin is {pin.status}, not editable")
+        for field in ("title", "description", "alt_text", "primary_keyword",
+                      "secondary_keywords", "tags", "board_name", "content_category"):
+            if field not in body.model_fields_set:
+                continue
+            value = getattr(body, field)
+            if field in ("secondary_keywords", "tags"):
+                value = json.dumps(value)
+            setattr(pin, field, value)
+        db.commit()
+        db.refresh(pin)
+        out = _to_pin_out(pin)
+    publish("metadata.edited", pin_id=out.id)
+    return out
 
 
 @router.get("/pins")
