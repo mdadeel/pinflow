@@ -32,6 +32,8 @@ export function formatEvent(event: { type: string; payload: Record<string, unkno
       return `Metadata generated${id}: ${String(p.title ?? "")}`
     case "metadata.failed":
       return `Metadata failed${id}: ${String(p.error ?? "")}`
+    case "metadata.edited":
+      return `Metadata edited${id}`
     case "pin.scheduled":
       return `Pin scheduled${id}`
     case "pin.published":

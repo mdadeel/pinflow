@@ -51,6 +51,12 @@ describe("formatEvent", () => {
     )
   })
 
+  it("formats metadata.edited", () => {
+    expect(formatEvent({ type: "metadata.edited", payload: { pin_id: 12 } })).toBe(
+      "Metadata edited (#12)"
+    )
+  })
+
   it("formats pin.published", () => {
     expect(formatEvent({ type: "pin.published", payload: { pin_id: 7 } })).toBe(
       "Pin published (#7)"

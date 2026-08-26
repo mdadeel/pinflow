@@ -3,6 +3,12 @@ import { render, screen, fireEvent, waitFor, within } from "@testing-library/rea
 import { KanbanBoard } from "@/components/kanban-board"
 import { fetchPins, movePin, ApiError, type Pin } from "@/lib/api"
 
+const { pushMock } = vi.hoisted(() => ({ pushMock: vi.fn() }))
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: pushMock }),
+}))
+
 vi.mock("@/lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api")>()
   return {
@@ -61,6 +67,7 @@ describe("KanbanBoard", () => {
   beforeEach(() => {
     mockedFetch.mockReset()
     mockedMove.mockReset()
+    pushMock.mockReset()
     mockedFetch.mockImplementation(async (params) => {
       const items = allPins.filter((p) => p.status === params?.status)
       return { items, total: items.length, page: 1, per_page: 200 }
@@ -110,5 +117,17 @@ describe("KanbanBoard", () => {
     )
     expect(within(pendingCol).getByTestId(`card-${allPins[0].id}`)).toBeDefined()
     expect(screen.getByRole("alert")).toBeDefined()
+  })
+
+  it("opens the editor when Edit is clicked", async () => {
+    render(<KanbanBoard />)
+
+    await waitFor(() => expect(mockedFetch).toHaveBeenCalled())
+    const card = screen.getByTestId(`card-${allPins[0].id}`)
+    const editBtn = within(card).getByRole("button", { name: /edit/i })
+
+    fireEvent.click(editBtn)
+
+    expect(pushMock).toHaveBeenCalledWith(`/pin/${allPins[0].id}`)
   })
 })

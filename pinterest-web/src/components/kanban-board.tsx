@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { useQueueStore } from "@/stores/queue-store"
 import { fetchPins, movePin, ApiError, type Pin, type PinStatus } from "@/lib/api"
@@ -28,6 +29,7 @@ function formatScheduled(value: string | null): string | null {
 }
 
 function PinCard({ pin }: { pin: Pin }) {
+  const router = useRouter()
   const setDragging = useQueueStore((s) => s.setDragging)
   const draggingId = useQueueStore((s) => s.draggingId)
   const src = `${API_BASE}${pin.image_url}`
@@ -72,6 +74,18 @@ function PinCard({ pin }: { pin: Pin }) {
           <p className="truncate text-xs text-muted-foreground">{scheduled}</p>
         )}
       </div>
+      <Button
+        type="button"
+        variant="secondary"
+        size="sm"
+        className="mt-2 w-full"
+        onClick={(e) => {
+          e.stopPropagation()
+          router.push(`/pin/${pin.id}`)
+        }}
+      >
+        Edit
+      </Button>
     </div>
   )
 }
