@@ -1,7 +1,7 @@
 import hashlib
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from typing import Literal
@@ -224,6 +224,30 @@ def move_pin(pin_id: int, body: StatusUpdate):
         db.refresh(pin)
         out = _to_pin_out(pin)
     publish("pin.updated", pin_id=out.id, status=out.status)
+    return out
+
+
+class ScheduleUpdate(BaseModel):
+    scheduled_time: str
+
+
+@router.patch("/pins/{pin_id}/schedule")
+def reschedule_pin(pin_id: int, body: ScheduleUpdate):
+    with dbmod.get_session_factory()() as db:
+        pin = db.get(Pin, pin_id)
+        if pin is None:
+            raise HTTPException(404)
+        if pin.status not in ("ready", "scheduled"):
+            raise HTTPException(409, detail=f"reschedule requires ready/scheduled, pin is {pin.status}")
+        parsed = datetime.fromisoformat(body.scheduled_time)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        pin.scheduled_time = parsed
+        pin.status = "scheduled"
+        db.commit()
+        db.refresh(pin)
+        out = _to_pin_out(pin)
+    publish("pin.scheduled", pin_id=out.id, scheduled_time=parsed.isoformat())
     return out
 
 
