@@ -6,6 +6,7 @@ const NAV_LINKS = [
   { href: "/upload", label: "Upload" },
   { href: "/queue", label: "Queue" },
   { href: "/calendar", label: "Calendar" },
+  { href: "/analytics", label: "Analytics" },
 ] as const
 
 export function Nav() {

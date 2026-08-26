@@ -81,6 +81,25 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>
 }
 
+export interface AnalyticsSummary {
+  totals: {
+    pins: number
+    published: number
+    scheduled: number
+    pending: number
+    ready: number
+    failed: number
+  }
+  by_status: Record<string, number>
+  top_pins: { id: number; title: string; impressions: number; saves: number; clicks: number }[]
+  series: { date: string; published: number; clicks: number; impressions: number }[]
+  ctr: number
+}
+
+export function fetchAnalytics(): Promise<AnalyticsSummary> {
+  return request<AnalyticsSummary>("/api/analytics")
+}
+
 export function fetchPins(params: FetchPinsParams = {}): Promise<PinListResponse> {
   const search = new URLSearchParams()
   if (params.status) search.set("status", params.status)
