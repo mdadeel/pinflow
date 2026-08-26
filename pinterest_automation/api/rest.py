@@ -1,7 +1,7 @@
 import hashlib
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from typing import Literal
@@ -298,4 +298,40 @@ def stats():
         "clicks": sums[1] or 0,
         "saves": sums[2] or 0,
         "outbound_clicks": sums[3] or 0,
+    }
+
+
+@router.get("/analytics")
+def analytics_summary():
+    # Pin has no impressions/saves/clicks columns (they live on AnalyticsRow),
+    # so top_pins/ctr are empty/zero and the series only counts published pins.
+    with dbmod.get_session_factory()() as db:
+        total = db.query(func.count(Pin.id)).scalar() or 0
+        counts = dict(db.query(Pin.status, func.count(Pin.id)).group_by(Pin.status).all())
+
+        since = dbmod.utcnow() - timedelta(days=30)
+        pubs = [t[0] for t in db.query(Pin.published_time)
+                .filter(Pin.published_time >= since).all() if t[0] is not None]
+        buckets: dict[str, int] = {}
+        for pt in pubs:
+            d = pt.date().isoformat()
+            buckets[d] = buckets.get(d, 0) + 1
+
+        today = dbmod.utcnow().date()
+        series = [{"date": d.isoformat(), "published": buckets.get(d.isoformat(), 0)}
+                  for d in (today - timedelta(days=i) for i in range(29, -1, -1))]
+
+    return {
+        "totals": {
+            "pins": total,
+            "published": counts.get("published", 0),
+            "scheduled": counts.get("scheduled", 0),
+            "pending": counts.get("pending", 0),
+            "ready": counts.get("ready", 0),
+            "failed": counts.get("failed", 0),
+        },
+        "by_status": counts,
+        "top_pins": [],
+        "series": series,
+        "ctr": 0.0,
     }
