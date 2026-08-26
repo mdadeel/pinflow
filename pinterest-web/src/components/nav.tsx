@@ -5,6 +5,7 @@ const NAV_LINKS = [
   { href: "/", label: "Overview" },
   { href: "/upload", label: "Upload" },
   { href: "/queue", label: "Queue" },
+  { href: "/calendar", label: "Calendar" },
 ] as const
 
 export function Nav() {

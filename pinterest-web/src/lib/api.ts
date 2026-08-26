@@ -18,6 +18,7 @@ export interface Pin {
   height: number | null
   created_at: string
   scheduled_time: string | null
+  published_time?: string | null
 }
 
 export interface PinListResponse {
@@ -135,4 +136,11 @@ export function regeneratePin(id: number): Promise<Pin> {
 
 export function approvePin(id: number): Promise<Pin> {
   return request<Pin>(`/api/pins/${id}/approve`, { method: "POST" })
+}
+
+export function reschedulePin(id: number, scheduledTimeIso: string): Promise<Pin> {
+  return request<Pin>(`/api/pins/${id}/schedule`, {
+    method: "PATCH",
+    body: JSON.stringify({ scheduled_time: scheduledTimeIso }),
+  })
 }
