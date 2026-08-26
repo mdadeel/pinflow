@@ -14,6 +14,7 @@ from pinterest_automation.config.settings import settings
 from pinterest_automation.database import db as dbmod
 from pinterest_automation.database.models import AnalyticsRow, Pin
 from pinterest_automation.services import analyzer
+from pinterest_automation.services import scheduler
 from pinterest_automation.services.events import publish
 from pinterest_automation.utils.media_types import EXTENSIONS, image_dimensions
 
@@ -223,6 +224,21 @@ def move_pin(pin_id: int, body: StatusUpdate):
         db.refresh(pin)
         out = _to_pin_out(pin)
     publish("pin.updated", pin_id=out.id, status=out.status)
+    return out
+
+
+@router.post("/pins/{pin_id}/approve")
+def approve_pin(pin_id: int):
+    with dbmod.get_session_factory()() as db:
+        pin = db.get(Pin, pin_id)
+        if pin is None:
+            raise HTTPException(404)
+        if pin.status != "ready":
+            raise HTTPException(409, detail=f"approve requires ready, pin is {pin.status}")
+        scheduler.assign_schedule_times(db, [pin_id])
+        db.refresh(pin)
+        out = _to_pin_out(pin)
+    publish("pin.scheduled", pin_id=out.id, scheduled_time=out.scheduled_time)
     return out
 
 
