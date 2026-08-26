@@ -4,15 +4,27 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import desc, func
 
+from pinterest_automation.api.rest import router as rest_router
+from pinterest_automation.api.ws import router as ws_router
 from pinterest_automation.database import db as dbmod
 from pinterest_automation.database.models import AnalyticsRow, Pin
 
 app = FastAPI(title="Pinterest Publisher")
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+app.include_router(rest_router)
+app.include_router(ws_router)
 
 
 @app.get("/", response_class=HTMLResponse)
