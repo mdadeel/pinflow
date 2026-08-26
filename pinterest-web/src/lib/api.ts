@@ -106,3 +106,33 @@ export function uploadFiles(files: File[]): Promise<UploadResult> {
   for (const file of files) form.append("files", file)
   return request<UploadResult>("/api/uploads", { method: "POST", body: form })
 }
+
+export interface PinEdit {
+  title?: string | null
+  description?: string | null
+  alt_text?: string | null
+  primary_keyword?: string | null
+  secondary_keywords?: string[] | null
+  tags?: string[] | null
+  board_name?: string | null
+  content_category?: string | null
+}
+
+export function fetchPin(id: number): Promise<Pin> {
+  return request<Pin>(`/api/pins/${id}`)
+}
+
+export function updatePin(id: number, body: PinEdit): Promise<Pin> {
+  return request<Pin>(`/api/pins/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  })
+}
+
+export function regeneratePin(id: number): Promise<Pin> {
+  return request<Pin>(`/api/pins/${id}/regenerate`, { method: "POST" })
+}
+
+export function approvePin(id: number): Promise<Pin> {
+  return request<Pin>(`/api/pins/${id}/approve`, { method: "POST" })
+}
