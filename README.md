@@ -66,3 +66,33 @@ The pattern is one client module (`pinterest_automation/api/<platform>.py`) plus
 - `post_hours` are UTC.
 - Single Pinterest account per instance.
 - Analytics window = since each pin's publish date.
+
+## Platform UI (`pinterest-web`)
+
+A Next.js 16 SPA providing drag-drop upload, a Kanban queue, overview stats, and a live activity feed. It talks to the same FastAPI app that serves the legacy analytics dashboard (`serve` on `:8000`).
+
+### Run
+
+```bash
+# terminal 1 — backend (serves /api/* and /ws on :8000)
+./venv/bin/python -m pinterest_automation.main serve
+
+# terminal 2 — frontend
+cd pinterest-web
+npm install        # first time only
+npm run dev        # http://localhost:3000
+```
+
+The frontend expects the API at `NEXT_PUBLIC_API_URL` (default `http://localhost:8000`). CORS allows only `http://localhost:3000`.
+
+### Phase 1 features
+- Drag-drop / paste / multi-select upload with SHA-256 duplicate detection.
+- Kanban queue: drag pins between **Uploaded (`pending`) / Ready (`ready`) / Scheduled (`scheduled`) / Published (`published`) / Failed (`failed`)**. Only `pending ↔ ready` is a manual move; other transitions are pipeline-driven and return `409`.
+- Overview stat cards: totals, per-status counts, clicks / saves / impressions.
+- Live activity feed over WebSocket (`/ws`), seeded from recent events and reconnecting with backoff.
+
+### Frontend tests / build
+
+```bash
+cd pinterest-web && npm run test && npm run build
+```
