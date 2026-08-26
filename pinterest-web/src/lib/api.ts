@@ -163,3 +163,36 @@ export function reschedulePin(id: number, scheduledTimeIso: string): Promise<Pin
     body: JSON.stringify({ scheduled_time: scheduledTimeIso }),
   })
 }
+
+export interface DuplicateCandidate {
+  id: number
+  title: string
+  score: number
+  status: string
+}
+
+export function fetchDuplicates(id: number): Promise<DuplicateCandidate[]> {
+  return request<DuplicateCandidate[]>(`/api/pins/${id}/duplicates`)
+}
+
+export interface LearningCounts {
+  counts: Record<string, number>
+  total: number
+}
+
+export function fetchLearning(): Promise<LearningCounts> {
+  return request<LearningCounts>("/api/learning")
+}
+
+export function recordLearning(
+  action: string,
+  pinId?: number,
+): Promise<{ id: number; action: string; pin_id: number | null }> {
+  return request<{ id: number; action: string; pin_id: number | null }>(
+    "/api/learning",
+    {
+      method: "POST",
+      body: JSON.stringify({ action, pin_id: pinId ?? null }),
+    },
+  )
+}

@@ -34,4 +34,28 @@ describe("AnalyticsPage", () => {
     render(<AnalyticsPage />)
     expect(await screen.findByText("No analytics yet")).toBeDefined()
   })
+
+  it("renders the Learning signals card with counts", async () => {
+    vi.spyOn(api, "fetchAnalytics").mockResolvedValue(sample as api.AnalyticsSummary)
+    vi.spyOn(api, "fetchLearning").mockResolvedValue({
+      counts: { approved: 3 },
+      total: 3,
+    } as api.LearningCounts)
+
+    render(<AnalyticsPage />)
+
+    expect(await screen.findByText("Learning signals")).toBeDefined()
+    expect(screen.getByText("approved: 3")).toBeDefined()
+  })
+
+  it("shows 'No signals yet' when there are no learning signals", async () => {
+    vi.spyOn(api, "fetchAnalytics").mockResolvedValue(sample as api.AnalyticsSummary)
+    vi.spyOn(api, "fetchLearning").mockResolvedValue({
+      counts: {},
+      total: 0,
+    } as api.LearningCounts)
+
+    render(<AnalyticsPage />)
+    expect(await screen.findByText("No signals yet")).toBeDefined()
+  })
 })

@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -8,9 +9,12 @@ import {
   updatePin,
   regeneratePin,
   approvePin,
+  fetchDuplicates,
+  recordLearning,
   ApiError,
   type Pin,
   type PinEdit,
+  type DuplicateCandidate,
 } from "@/lib/api"
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
@@ -98,6 +102,7 @@ export function PinEditor({ id }: { id: number }) {
   const [initial, setInitial] = useState<FormState | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [duplicates, setDuplicates] = useState<DuplicateCandidate[] | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -112,6 +117,20 @@ export function PinEditor({ id }: { id: number }) {
       })
       .catch((err) => {
         if (!cancelled) setError(describeError(err))
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [id])
+
+  useEffect(() => {
+    let cancelled = false
+    fetchDuplicates(id)
+      .then((list) => {
+        if (!cancelled) setDuplicates(list ?? [])
+      })
+      .catch(() => {
+        if (!cancelled) setDuplicates(null)
       })
     return () => {
       cancelled = true
@@ -138,6 +157,7 @@ export function PinEditor({ id }: { id: number }) {
     try {
       const next = await updatePin(id, body)
       applyPin(next)
+      recordLearning("edited", id).catch(() => {})
     } catch (err) {
       setError(describeError(err))
     } finally {
@@ -151,6 +171,7 @@ export function PinEditor({ id }: { id: number }) {
     try {
       const next = await regeneratePin(id)
       applyPin(next)
+      recordLearning("regenerated", id).catch(() => {})
     } catch (err) {
       setError(describeError(err))
     } finally {
@@ -164,6 +185,7 @@ export function PinEditor({ id }: { id: number }) {
     try {
       const next = await approvePin(id)
       applyPin(next)
+      recordLearning("approved", id).catch(() => {})
     } catch (err) {
       setError(describeError(err))
     } finally {
@@ -212,6 +234,27 @@ export function PinEditor({ id }: { id: number }) {
             Scheduled: {scheduled}
           </p>
         )}
+
+        <div className="rounded-lg border border-border p-4">
+          <h3 className="text-sm font-medium">Possible duplicates</h3>
+          {duplicates === null ? (
+            <p className="mt-2 text-sm text-muted-foreground">
+              Couldn&apos;t check for duplicates.
+            </p>
+          ) : duplicates.length === 0 ? (
+            <p className="mt-2 text-sm text-muted-foreground">No duplicates found</p>
+          ) : (
+            <ul className="mt-2 space-y-1 text-sm">
+              {duplicates.map((dup) => (
+                <li key={dup.id}>
+                  <Link href={`/pin/${dup.id}`} className="text-primary hover:underline">
+                    {dup.title} ({(dup.score * 100).toFixed(0)}%)
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
 
         <div className="space-y-3">
           <label className="block space-y-1">

@@ -6,6 +6,8 @@ import {
   updatePin,
   regeneratePin,
   approvePin,
+  fetchDuplicates,
+  recordLearning,
   ApiError,
   type Pin,
 } from "@/lib/api"
@@ -18,13 +20,23 @@ vi.mock("@/lib/api", async (importOriginal) => {
     updatePin: vi.fn(),
     regeneratePin: vi.fn(),
     approvePin: vi.fn(),
+    fetchDuplicates: vi.fn(),
+    recordLearning: vi.fn(),
   }
 })
+
+vi.mock("next/link", () => ({
+  default: ({ href, children }: { href: string; children: React.ReactNode }) => (
+    <a href={href}>{children}</a>
+  ),
+}))
 
 const mockedFetch = vi.mocked(fetchPin)
 const mockedUpdate = vi.mocked(updatePin)
 const mockedRegenerate = vi.mocked(regeneratePin)
 const mockedApprove = vi.mocked(approvePin)
+const mockedFetchDuplicates = vi.mocked(fetchDuplicates)
+const mockedRecordLearning = vi.mocked(recordLearning)
 
 function makePin(overrides: Partial<Pin> = {}): Pin {
   return {
@@ -55,6 +67,8 @@ describe("PinEditor", () => {
     mockedUpdate.mockReset()
     mockedRegenerate.mockReset()
     mockedApprove.mockReset()
+    mockedFetchDuplicates.mockReset()
+    mockedRecordLearning.mockReset()
     mockedFetch.mockImplementation(async () => makePin())
     mockedUpdate.mockImplementation(async (_id, body) => makePin(body as Partial<Pin>))
     mockedRegenerate.mockImplementation(async () =>
@@ -63,6 +77,8 @@ describe("PinEditor", () => {
     mockedApprove.mockImplementation(async () =>
       makePin({ status: "scheduled", scheduled_time: "2026-03-01T10:00:00Z" }),
     )
+    mockedFetchDuplicates.mockImplementation(async () => [])
+    mockedRecordLearning.mockResolvedValue({ id: 1, action: "edited", pin_id: 1 })
   })
 
   it("loads the pin and renders the title in an input", async () => {
@@ -113,6 +129,56 @@ describe("PinEditor", () => {
       expect(screen.getByRole("alert").textContent).toContain(
         "Cannot edit scheduled pin",
       ),
+    )
+  })
+
+  it("renders the Possible duplicates panel with a link to the duplicate", async () => {
+    mockedFetch.mockImplementation(async () => makePin({ id: 1 }))
+    mockedFetchDuplicates.mockImplementation(async () => [
+      { id: 99, title: "Dup", score: 0.95, status: "ready" },
+    ])
+    render(<PinEditor id={1} />)
+
+    expect(await screen.findByText("Possible duplicates")).toBeDefined()
+    const link = screen.getByRole("link", { name: /Dup/ })
+    expect(link.getAttribute("href")).toBe("/pin/99")
+    expect(link.textContent).toContain("95%")
+  })
+
+  it("records an 'edited' learning signal after a successful Save", async () => {
+    mockedFetch.mockImplementation(async () => makePin({ title: "Original" }))
+    render(<PinEditor id={1} />)
+
+    const title = await screen.findByLabelText("Title")
+    fireEvent.change(title, { target: { value: "new" } })
+    fireEvent.click(screen.getByRole("button", { name: "Save" }))
+
+    await waitFor(() =>
+      expect(mockedRecordLearning).toHaveBeenCalledWith("edited", 1),
+    )
+  })
+
+  it("records an 'approved' learning signal after a successful Approve", async () => {
+    mockedFetch.mockImplementation(async () => makePin({ status: "ready" }))
+    render(<PinEditor id={1} />)
+
+    await screen.findByDisplayValue("Original")
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }))
+
+    await waitFor(() =>
+      expect(mockedRecordLearning).toHaveBeenCalledWith("approved", 1),
+    )
+  })
+
+  it("records a 'regenerated' learning signal after a successful Regenerate", async () => {
+    mockedFetch.mockImplementation(async () => makePin({ status: "ready" }))
+    render(<PinEditor id={1} />)
+
+    await screen.findByDisplayValue("Original")
+    fireEvent.click(screen.getByRole("button", { name: "Regenerate" }))
+
+    await waitFor(() =>
+      expect(mockedRecordLearning).toHaveBeenCalledWith("regenerated", 1),
     )
   })
 })

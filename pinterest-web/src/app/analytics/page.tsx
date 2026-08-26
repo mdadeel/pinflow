@@ -3,7 +3,12 @@
 import { useEffect, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Sparkline } from "@/components/sparkline"
-import { fetchAnalytics, type AnalyticsSummary } from "@/lib/api"
+import {
+  fetchAnalytics,
+  fetchLearning,
+  type AnalyticsSummary,
+  type LearningCounts,
+} from "@/lib/api"
 
 const STATUSES = ["pending", "ready", "scheduled", "published", "failed"] as const
 
@@ -15,6 +20,7 @@ const STAT_CARDS: { key: keyof AnalyticsSummary["totals"]; label: string; format
 
 export default function AnalyticsPage() {
   const [data, setData] = useState<AnalyticsSummary | null>(null)
+  const [learning, setLearning] = useState<LearningCounts | null>(null)
   const [error, setError] = useState(false)
 
   useEffect(() => {
@@ -26,6 +32,11 @@ export default function AnalyticsPage() {
       .catch(() => {
         if (active) setError(true)
       })
+    fetchLearning()
+      .then((res) => {
+        if (active) setLearning(res)
+      })
+      .catch(() => {})
     return () => {
       active = false
     }
@@ -89,6 +100,31 @@ export default function AnalyticsPage() {
             </Card>
           ))}
         </ul>
+      </section>
+
+      <section className="mt-6">
+        <h2 className="text-lg font-medium">Learning signals</h2>
+        {!learning ? (
+          <p className="mt-3 text-muted-foreground">No signals yet</p>
+        ) : learning.total === 0 ? (
+          <p className="mt-3 text-muted-foreground">No signals yet</p>
+        ) : (
+          <Card size="sm" className="mt-3">
+            <CardHeader>
+              <CardTitle className="text-muted-foreground font-normal">
+                Total signals
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="text-2xl font-semibold tracking-tight">
+              {learning.total.toLocaleString()}
+            </CardContent>
+            <CardContent className="text-sm text-muted-foreground">
+              {Object.entries(learning.counts)
+                .map(([action, count]) => `${action}: ${count}`)
+                .join(", ")}
+            </CardContent>
+          </Card>
+        )}
       </section>
 
       <section className="mt-6">
