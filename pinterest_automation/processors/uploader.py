@@ -21,8 +21,9 @@ def publish_pin(db, pin: Pin, token: str | None = None,
         db.commit()
         return False
 
-    board_id = pin.board_id or map_board(pin.board_name or "", boards,
-                                         overrides=settings.board_overrides)
+    board_id = (pin.board_id or 
+                map_board(pin.board_name or "", boards, overrides=settings.board_overrides) or 
+                settings.pinterest_board_id)
     if not board_id:
         pin.status = "failed"
         pin.error_message = f"no matching pinterest board for {pin.board_name!r}"

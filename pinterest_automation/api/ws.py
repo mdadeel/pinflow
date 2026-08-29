@@ -1,8 +1,9 @@
 import asyncio
 import logging
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 
+from pinterest_automation.config.settings import settings
 from pinterest_automation.services import events
 
 log = logging.getLogger(__name__)
@@ -10,7 +11,10 @@ router = APIRouter()
 
 
 @router.websocket("/ws")
-async def event_stream(ws: WebSocket):
+async def event_stream(ws: WebSocket, token: str | None = Query(default=None)):
+    if settings.ws_secret and token != settings.ws_secret:
+        await ws.close(code=4001, reason="unauthorized")
+        return
     await ws.accept()
     q = events.subscribe()
     try:

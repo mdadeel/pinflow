@@ -46,7 +46,13 @@ def _ensure_pin_columns(engine) -> None:
 
 def make_session_factory(db_url: str) -> sessionmaker:
     from pinterest_automation.database import models  # noqa: F401 register tables
-    engine = create_engine(db_url, connect_args={"check_same_thread": False})
+    engine = create_engine(
+        db_url,
+        connect_args={"check_same_thread": False},
+        pool_size=20,
+        max_overflow=30,
+        pool_pre_ping=True,
+    )
 
     @event.listens_for(engine, "connect")
     def _fk_on(dbapi_conn, _):

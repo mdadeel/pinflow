@@ -4,7 +4,7 @@ from pathlib import Path
 
 from pinterest_automation.database.models import Pin
 from pinterest_automation.services import events
-from pinterest_automation.utils.media_types import EXTENSIONS
+from pinterest_automation.utils.media_types import EXTENSIONS, image_dimensions
 
 log = logging.getLogger(__name__)
 
@@ -27,7 +27,13 @@ def scan_folder(folder: Path, db) -> int:
         digest = sha256_file(p)
         if digest in existing:
             continue
-        batch.append(Pin(image_path=str(p.resolve()), image_hash=digest))
+        try:
+            w, h = image_dimensions(p)
+        except Exception:  # noqa: BLE001 - allow ingestion of naive/mock files in tests
+            w = h = None
+        file_size = p.stat().st_size
+        batch.append(Pin(image_path=str(p.resolve()), image_hash=digest,
+                         file_size=file_size, width=w, height=h))
         existing.add(digest)
     if batch:
         db.add_all(batch)

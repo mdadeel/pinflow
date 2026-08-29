@@ -2,6 +2,7 @@ import argparse
 import contextlib
 import fcntl
 import logging
+import os
 import sys
 import time
 from pathlib import Path
@@ -83,22 +84,33 @@ def cmd_publish_now(pin_id: int) -> int:
     return 0 if ok else 1
 
 
-def cmd_run_once() -> int:
+def run_pipeline_once() -> dict:
+    """Run one full cycle: scan -> analyze -> schedule -> publish due pins."""
     cmd_scan()
-    cmd_analyze(None)
-    cmd_schedule(None)
+    db = dbmod.get_session_factory()()
+    analyzed = analyze_pending(db)
+    ids = _ready_ids(db, None)
+    scheduled = assign_schedule_times(db, ids)
+    pub = failed = 0
+    locked = False
     try:
         with _publish_lock():
-            db = dbmod.get_session_factory()()
             pub, failed = run_due(db)
-    except LockBusy as e:
-        print(str(e))
-        return 1
-    print(f"published {pub}, failed {failed}")
-    return 0
+    except LockBusy:
+        locked = True
+        log.warning("run skipped: another run is publishing")
+    return {"analyzed": analyzed, "scheduled": scheduled,
+            "published": pub, "failed": failed, "locked": locked}
 
 
-def cmd_daemon() -> None:
+def cmd_run_once() -> int:
+    r = run_pipeline_once()
+    print(f"analyzed {r['analyzed']}, scheduled {r['scheduled']}, "
+          f"published {r['published']}, failed {r['failed']}")
+    return 1 if r["locked"] else 0
+
+
+def build_pipeline_scheduler() -> BackgroundScheduler:
     sched = BackgroundScheduler()
 
     sched.add_job(cmd_scan, "interval", minutes=5, id="scan")
@@ -124,6 +136,11 @@ def cmd_daemon() -> None:
             log.error("nightly report failed: %s", e)
 
     sched.add_job(nightly_report, "cron", hour=23, minute=30, id="daily-report")
+    return sched
+
+
+def cmd_daemon() -> None:
+    sched = build_pipeline_scheduler()
     sched.start()
     print("daemon running. ctrl-c to stop.")
     try:
@@ -158,7 +175,12 @@ def cmd_report(kind: str) -> int:
 
 def cmd_serve() -> None:
     import uvicorn
-    uvicorn.run("pinterest_automation.dashboard.app:app", host="127.0.0.1", port=8000)
+    sched = build_pipeline_scheduler()
+    sched.start()
+    try:
+        uvicorn.run("pinterest_automation.dashboard.app:app", host="127.0.0.1", port=8000)
+    finally:
+        sched.shutdown()
 
 
 def run(argv: list[str] | None = None) -> int:

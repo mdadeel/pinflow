@@ -6,22 +6,93 @@ from pathlib import Path
 
 from typing import Literal
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, File, HTTPException, Request, Response, UploadFile
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, text
 
 from pinterest_automation.config.settings import settings
 from pinterest_automation.database import db as dbmod
 from pinterest_automation.database.models import AnalyticsRow, LearningSignal, Pin
 from pinterest_automation.services import analyzer
 from pinterest_automation.services import scheduler
+from pinterest_automation.services import pin_actions
 from pinterest_automation.services.events import publish
+from pinterest_automation.main import run_pipeline_once
 from pinterest_automation.utils.media_types import EXTENSIONS, image_dimensions
+from pinterest_automation.api.ratelimit import limiter, UPLOAD_LIMIT, PIPELINE_LIMIT, READ_LIMIT, WRITE_LIMIT
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api")
 
+APP_VERSION = "1.0.0"
 MAX_UPLOAD_BYTES = 30 * 1024 * 1024
+
+
+@router.get("/health")
+def health_check():
+    """Basic health check endpoint for load balancers and monitoring."""
+    health = {
+        "status": "healthy",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "version": APP_VERSION,
+        "checks": {}
+    }
+
+    # Check database
+    try:
+        with dbmod.get_session_factory()() as db:
+            db.execute(text("SELECT 1"))
+        health["checks"]["database"] = "ok"
+    except Exception as e:
+        health["status"] = "degraded"
+        health["checks"]["database"] = f"error: {str(e)[:100]}"
+
+    # Check Pinterest API token
+    if settings.pinterest_access_token:
+        health["checks"]["pinterest_api"] = "configured"
+    else:
+        health["checks"]["pinterest_api"] = "not_configured"
+
+    # Check LLM providers
+    if settings.llm_providers or settings.openrouter_api_key:
+        health["checks"]["llm_providers"] = "configured"
+    else:
+        health["checks"]["llm_providers"] = "not_configured"
+
+    # Check images directory
+    images_path = Path(settings.images_dir)
+    if images_path.exists():
+        health["checks"]["storage"] = "ok"
+    else:
+        health["status"] = "degraded"
+        health["checks"]["storage"] = "directory_missing"
+
+    return health
+
+
+@router.get("/health/ready")
+def readiness_check():
+    """Readiness probe - is the service ready to accept traffic?"""
+    checks = {
+        "database": False,
+        "pinterest_api": bool(settings.pinterest_access_token),
+        "llm_providers": bool(settings.llm_providers or settings.openrouter_api_key),
+        "storage": Path(settings.images_dir).exists(),
+    }
+
+    # Check database connectivity
+    try:
+        with dbmod.get_session_factory()() as db:
+            db.execute(text("SELECT 1"))
+        checks["database"] = True
+    except Exception:
+        pass
+
+    ready = all(checks.values())
+    return {
+        "ready": ready,
+        "checks": checks,
+    }
 
 # Max Hamming distance for a candidate to count as a duplicate. `image_hash` is a
 # 256-bit SHA256 content hash (64 hex chars), not a perceptual hash, so near-zero
@@ -110,12 +181,14 @@ def _collision_free_path(folder: Path, name: str) -> Path:
 
 
 @router.post("/uploads", status_code=201)
-async def upload_images(files: list[UploadFile] = File(...)):
+@limiter.limit(UPLOAD_LIMIT)
+async def upload_images(request: Request, files: list[UploadFile] = File(...)):
     folder = Path(settings.images_dir)
     folder.mkdir(parents=True, exist_ok=True)
-    added, duplicates, rejected = [], [], []
+    added, duplicates, rejected, retried = [], [], [], []
     with dbmod.get_session_factory()() as db:
-        existing_hashes = {h for (h,) in db.query(Pin.image_hash).all()}
+        existing = {p.image_hash: p for p in db.query(Pin).all()}
+        seen = set(existing.keys())
 
         for uf in files:
             raw = Path(uf.filename or "").name  # strip directory components (path traversal)
@@ -128,8 +201,20 @@ async def upload_images(files: list[UploadFile] = File(...)):
                 rejected.append(RejectedFile(filename=name, reason="too large"))
                 continue
             digest = hashlib.sha256(data).hexdigest()
-            if digest in existing_hashes:
-                duplicates.append(name)
+            if digest in seen:
+                pin = existing.get(digest)
+                if pin is not None and (
+                    pin.status == "failed" or pin.status.startswith("failed")
+                ):
+                    # Previously failed upload: reset it and re-process instead of skipping.
+                    try:
+                        Path(pin.image_path).write_bytes(data)
+                    except OSError:
+                        pass
+                    pin_actions.reset_pin(db, pin.id)
+                    retried.append(_to_pin_out(pin))
+                else:
+                    duplicates.append(name)
                 continue
             dest = _collision_free_path(folder, name)
             dest.write_bytes(data)
@@ -144,11 +229,18 @@ async def upload_images(files: list[UploadFile] = File(...)):
             db.add(pin)
             db.commit()
             db.refresh(pin)
-            existing_hashes.add(digest)
+            seen.add(digest)
             added.append(_to_pin_out(pin))
             publish("image.uploaded", path=str(dest.resolve()), filename=name)
-    return {"added": added, "duplicates": duplicates,
+    return {"added": added, "duplicates": duplicates, "retried": retried,
             "rejected": [r.model_dump() for r in rejected]}
+
+
+@router.post("/pipeline/run")
+@limiter.limit(PIPELINE_LIMIT)
+def run_pipeline(request: Request) -> dict:
+    """Run one full cycle now (scan -> analyze -> schedule -> publish due)."""
+    return run_pipeline_once()
 
 
 PIN_STATUSES = Literal["pending", "ready", "scheduled", "published", "failed"]
@@ -174,7 +266,8 @@ class PinEdit(BaseModel):
 
 
 @router.patch("/pins/{pin_id}")
-def edit_pin(pin_id: int, body: PinEdit):
+@limiter.limit(WRITE_LIMIT)
+def edit_pin(request: Request, pin_id: int, body: PinEdit):
     with dbmod.get_session_factory()() as db:
         pin = db.get(Pin, pin_id)
         if pin is None:
@@ -197,7 +290,8 @@ def edit_pin(pin_id: int, body: PinEdit):
 
 
 @router.get("/pins")
-def list_pins(status: str | None = None, page: int = 1, per_page: int = 50,
+@limiter.limit(READ_LIMIT)
+def list_pins(request: Request, status: str | None = None, page: int = 1, per_page: int = 50,
               q: str | None = None):
     per_page = max(1, min(per_page, 200))
     page = max(1, page)
@@ -243,7 +337,8 @@ def find_duplicates(pin_id: int):
 
 
 @router.get("/pins/{pin_id}")
-def get_pin(pin_id: int):
+@limiter.limit(READ_LIMIT)
+def get_pin(request: Request, pin_id: int):
     with dbmod.get_session_factory()() as db:
         pin = db.get(Pin, pin_id)
         if pin is None:
@@ -319,8 +414,53 @@ def regenerate(pin_id: int):
     return out
 
 
+@router.delete("/pins/{pin_id}")
+def delete_pin(pin_id: int):
+    with dbmod.get_session_factory()() as db:
+        if not pin_actions.delete_pin(db, pin_id):
+            raise HTTPException(404)
+    return Response(status_code=204)
+
+
+@router.post("/pins/{pin_id}/reset")
+def reset_pin(pin_id: int):
+    with dbmod.get_session_factory()() as db:
+        pin = pin_actions.reset_pin(db, pin_id)
+        if pin is None:
+            raise HTTPException(404)
+        out = _to_pin_out(pin)
+    publish("pin.updated", pin_id=out.id, status=out.status)
+    return out
+
+
+@router.post("/pins/{pin_id}/retry")
+def retry_pin(pin_id: int):
+    token = settings.pinterest_access_token or None
+    with dbmod.get_session_factory()() as db:
+        pin = pin_actions.retry_pin(db, pin_id, token=token)
+        if pin is None:
+            raise HTTPException(404)
+        out = _to_pin_out(pin)
+    publish("pin.updated", pin_id=out.id, status=out.status)
+    return out
+
+
+class BulkAction(BaseModel):
+    action: Literal["delete", "reset", "retry"]
+    ids: list[int] | None = None
+
+
+@router.post("/pins/bulk")
+def bulk_action(body: BulkAction):
+    token = settings.pinterest_access_token or None
+    with dbmod.get_session_factory()() as db:
+        result = pin_actions.bulk_action(db, body.action, body.ids, token=token)
+    return result
+
+
 @router.get("/stats")
-def stats():
+@limiter.limit(READ_LIMIT)
+def stats(request: Request):
     with dbmod.get_session_factory()() as db:
         counts = dict(db.query(Pin.status, func.count(Pin.id)).group_by(Pin.status).all())
         sums = db.query(func.sum(AnalyticsRow.impressions),
@@ -342,7 +482,8 @@ def stats():
 
 
 @router.get("/analytics")
-def analytics_summary():
+@limiter.limit(READ_LIMIT)
+def analytics_summary(request: Request):
     # Pin has no impressions/saves/clicks columns (they live on AnalyticsRow),
     # so top_pins/ctr/series clicks are aggregated from AnalyticsRow.
     with dbmod.get_session_factory()() as db:

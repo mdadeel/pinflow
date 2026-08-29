@@ -1,4 +1,5 @@
 import logging
+import math
 from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import func
@@ -29,19 +30,43 @@ def _slot_taken_count(db, day: date, cfg: Settings) -> int:
               .scalar())
 
 
+def _hour_slots_count(db, base: date, hour: int) -> int:
+    from datetime import time
+    start = datetime.combine(base, time(hour, 0, 0), tzinfo=timezone.utc)
+    end = datetime.combine(base, time(hour, 59, 59), tzinfo=timezone.utc)
+    return (db.query(func.count(Pin.id))
+              .filter(Pin.status == "scheduled",
+                      Pin.scheduled_time >= start,
+                      Pin.scheduled_time <= end)
+              .scalar() or 0)
+
+
 def _next_free_slot(db, cfg: Settings, now: datetime):
     for offset in range(MAX_DAYS_AHEAD):
         base = (_aware_utc(now) + timedelta(days=offset)).date()
         taken = _slot_taken_count(db, base, cfg)
         if taken >= cfg.posts_per_day:
             continue
+        
+        candidates = []
         for hour in sorted(cfg.post_hours):
             slot = datetime(base.year, base.month, base.day, hour,
-                            minute=taken % 60,  # ponytail: posts_per_day>60 wraps minutes via %60, cosmetic collisions only
-                            tzinfo=timezone.utc)
+                            minute=0, tzinfo=timezone.utc)
             if slot <= now:
                 continue
-            return slot
+            
+            slots_count = _hour_slots_count(db, base, hour)
+            limit = math.ceil(cfg.posts_per_day / len(cfg.post_hours))
+            if slots_count < limit:
+                candidates.append((slots_count, hour))
+        
+        if candidates:
+            # Sort by slots_count ascending, then hour ascending to distribute evenly
+            candidates.sort()
+            best_slots_count, best_hour = candidates[0]
+            return datetime(base.year, base.month, base.day, best_hour,
+                            minute=best_slots_count % 60,
+                            tzinfo=timezone.utc)
     return None
 
 
@@ -85,8 +110,14 @@ def run_due(db, now: datetime | None = None, max_posts: int | None = None,
     except Exception as e:  # noqa: BLE001 - infra failure is not pin failure: no retry_count/status change
         log.error("run_due aborted, get_boards failed: %s", str(e)[:200])
         for pin in due:
-            pin.scheduled_time = (pin.scheduled_time or utcnow()) + timedelta(minutes=BACKOFF_MINUTES)
             pin.error_message = f"run aborted, boards unavailable: {str(e)[:200]}"
+            if pin.retry_count >= MAX_RETRIES:
+                pin.status = "failed"
+                log.error("pin %s hit max retries (%d) on board fetch: %s",
+                          pin.id, MAX_RETRIES, str(e)[:150])
+            else:
+                delay = timedelta(minutes=BACKOFF_MINUTES * max(1, pin.retry_count))
+                pin.scheduled_time = (pin.scheduled_time or utcnow()) + delay
         db.commit()
         return 0, len(due)
 
