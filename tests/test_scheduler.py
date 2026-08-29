@@ -31,11 +31,14 @@ def test_assign_spreads_across_slots(db):
         assert n == 4
         times = sorted(p.scheduled_time for p in s.query(Pin).filter(Pin.id.in_(ids)))
         days = {t.date() for t in times}
-        assert len(days) == 2                       # 2 slots/day -> spills to next day
+        assert len(days) == 3                       # 2 slots/day, starting at 11:00 today -> spills to Jan 12
         per_day = {}
         for t in times:
             per_day[t.date()] = per_day.get(t.date(), 0) + 1
-        assert set(per_day.values()) == {2}
+        from datetime import date
+        assert per_day[date(2026, 1, 10)] == 1
+        assert per_day[date(2026, 1, 11)] == 2
+        assert per_day[date(2026, 1, 12)] == 1
         # first slot must be today at 11:00 (8:00 already passed at now=09:00)
         assert times[0].hour == 11
 

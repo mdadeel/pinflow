@@ -122,3 +122,34 @@ def test_upload_same_name_different_content_both_saved(client):
         paths = [p.image_path for p in s.query(Pin).order_by(Pin.id).all()]
     assert Path(paths[0]).name == "a.png"
     assert Path(paths[1]).name == "a (1).png"
+
+
+def test_upload_failed_duplicate_is_retried(client):
+    f, c = client
+    data = _png_bytes(50, 50)
+    _upload(c, [("first.png", data)])
+    from pinterest_automation.database.models import Pin
+    with f() as s:
+        s.query(Pin).update({Pin.status: "failed"}, synchronize_session=False)
+        s.commit()
+    r = _upload(c, [("again.png", data)])
+    body = r.json()
+    assert body["added"] == []
+    assert body["duplicates"] == []
+    assert len(body["retried"]) == 1
+    assert body["retried"][0]["status"] == "pending"
+
+
+def test_upload_published_duplicate_is_skipped(client):
+    f, c = client
+    data = _png_bytes(50, 50)
+    _upload(c, [("first.png", data)])
+    from pinterest_automation.database.models import Pin
+    with f() as s:
+        s.query(Pin).update({Pin.status: "published"}, synchronize_session=False)
+        s.commit()
+    r = _upload(c, [("again.png", data)])
+    body = r.json()
+    assert body["added"] == []
+    assert body["retried"] == []
+    assert body["duplicates"] == ["again.png"]
