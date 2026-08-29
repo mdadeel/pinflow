@@ -1,6 +1,6 @@
-# Pinterest Automation
+# Wallpeps
 
-Automated Pinterest publisher: watches an image folder → generates SEO metadata via OpenRouter vision → stores pins in SQLite → publishes to Pinterest on a schedule → tracks analytics with a small web dashboard.
+Automated Pinterest publisher for Wallpeps: watches an image folder → generates SEO metadata via OpenRouter vision → stores pins in SQLite → publishes to Pinterest on a schedule → tracks analytics with a small web dashboard.
 
 ## Setup
 
@@ -84,6 +84,9 @@ npm run dev        # http://localhost:3000
 ```
 
 The frontend expects the API at `NEXT_PUBLIC_API_URL` (default `http://localhost:8000`). CORS allows only `http://localhost:3000`.
+
+### AI provider configuration
+The metadata generator (`analyzer`) calls an LLM. It defaults to OpenRouter (`OPENROUTER_API_KEY`); to use any other provider from `mini.md`, set `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL`, and `LLM_PROTOCOL` (`openai` for OpenAI-chat-shaped endpoints like z.ai/Pollinations/Nara/Moonshot/DashScope, or `anthropic` for Aerolink/FreeModel/OpenCode Zen). See `.env.example`.
 
 ### Phase 1 features
 - Drag-drop / paste / multi-select upload with SHA-256 duplicate detection.

@@ -1,12 +1,49 @@
+# Environments & Secrets
 .env
+.env*.local
+*.env
+
+# Python & Caches
 __pycache__/
 *.egg-info/
 .pytest_cache/
-pinterest_automation/data.db
-pinterest_automation/logs/*.log*
-pinterest_automation/logs/reports/
 venv/
 .venv/
-mini.md
-*.md.bak
+.coverage
+htmlcov/
+
+# Database & SQLite Runtime Artifacts
+pinterest_automation/data.db
+pinterest_automation/data.db-wal
+pinterest_automation/data.db-shm
+*.db
+*.db-wal
+*.db-shm
+*.sqlite3
+
+# Local Storage & Generated Images
+pinterest_automation/storage/
+images/
+
+# Logs & Locks
+pinterest_automation/logs/*.log*
+pinterest_automation/logs/reports/
 pinterest_automation/logs/publish.lock
+*.log
+
+# Frontend (Monorepo runs)
+pinterest-web/.next/
+pinterest-web/node_modules/
+pinterest-web/out/
+*.tsbuildinfo
+next-env.d.ts
+
+# Scratch & Tool State
+mini.md
+run.md
+*.md.bak
+.claude/
+.reticle/
+.vscode/
+.idea/
+--full-page
