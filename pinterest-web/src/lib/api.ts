@@ -51,10 +51,14 @@ export interface Stats {
 export interface UploadResult {
   added: Pin[]
   duplicates: string[]
+  retried: Pin[]
   rejected: { filename: string; reason: string }[]
 }
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
+const API_KEY = process.env.NEXT_PUBLIC_API_KEY ?? ""
+
+const DEFAULT_TIMEOUT_MS = 60_000
 
 export class ApiError extends Error {
   constructor(public readonly status: number, public readonly body: unknown, path: string) {
@@ -63,16 +67,39 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    ...init,
-    headers: {
-      Accept: "application/json",
-      ...(init?.body && !(init.body instanceof FormData)
-        ? { "Content-Type": "application/json" }
-        : {}),
-      ...init?.headers,
-    },
-  })
+  const signal =
+    init?.signal ??
+    (typeof AbortSignal !== "undefined" && typeof AbortSignal.timeout === "function"
+      ? AbortSignal.timeout(DEFAULT_TIMEOUT_MS)
+      : undefined)
+  let res: Response
+  try {
+    res = await fetch(`${API_BASE}${path}`, {
+      ...init,
+      signal,
+      headers: {
+        Accept: "application/json",
+        ...(API_KEY ? { "X-API-Key": API_KEY } : {}),
+        ...(init?.body && !(init.body instanceof FormData)
+          ? { "Content-Type": "application/json" }
+          : {}),
+        ...init?.headers,
+      },
+    })
+  } catch (err) {
+    if (
+      err instanceof DOMException &&
+      (err.name === "AbortError" || err.name === "TimeoutError")
+    ) {
+      throw new Error(
+        `Request to ${path} timed out after ${DEFAULT_TIMEOUT_MS / 1000}s`,
+      )
+    }
+    throw err
+  }
+  if (res.status === 204) {
+    return undefined as T
+  }
   if (!res.ok) {
     let body: unknown = null
     try { body = await res.json() } catch {}
@@ -195,4 +222,40 @@ export function recordLearning(
       body: JSON.stringify({ action, pin_id: pinId ?? null }),
     },
   )
+}
+
+export interface PipelineRunResult {
+  analyzed: number
+  scheduled: number
+  published: number
+  failed: number
+  locked?: boolean
+}
+
+export function runPipeline(): Promise<PipelineRunResult> {
+  return request<PipelineRunResult>("/api/pipeline/run", { method: "POST" })
+}
+
+export function deletePin(id: number): Promise<void> {
+  return request<void>(`/api/pins/${id}`, { method: "DELETE" })
+}
+
+export function resetPin(id: number): Promise<Pin> {
+  return request<Pin>(`/api/pins/${id}/reset`, { method: "POST" })
+}
+
+export function retryPin(id: number): Promise<Pin> {
+  return request<Pin>(`/api/pins/${id}/retry`, { method: "POST" })
+}
+
+export type BulkAction = "delete" | "reset" | "retry"
+
+export function bulkAction(
+  action: BulkAction,
+  ids?: number[],
+): Promise<{ action: string; processed: number; requested: number }> {
+  return request(`/api/pins/bulk`, {
+    method: "POST",
+    body: JSON.stringify(ids ? { action, ids } : { action }),
+  })
 }

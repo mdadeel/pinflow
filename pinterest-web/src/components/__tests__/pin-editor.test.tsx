@@ -93,7 +93,7 @@ describe("PinEditor", () => {
 
     const title = (await screen.findByLabelText("Title")) as HTMLInputElement
     fireEvent.change(title, { target: { value: "new" } })
-    fireEvent.click(screen.getByRole("button", { name: "Save" }))
+    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }))
 
     await waitFor(() =>
       expect(mockedUpdate).toHaveBeenCalledWith(1, { title: "new" }),
@@ -123,7 +123,7 @@ describe("PinEditor", () => {
 
     const title = await screen.findByLabelText("Title")
     fireEvent.change(title, { target: { value: "new" } })
-    fireEvent.click(screen.getByRole("button", { name: "Save" }))
+    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }))
 
     await waitFor(() =>
       expect(screen.getByRole("alert").textContent).toContain(
@@ -151,7 +151,7 @@ describe("PinEditor", () => {
 
     const title = await screen.findByLabelText("Title")
     fireEvent.change(title, { target: { value: "new" } })
-    fireEvent.click(screen.getByRole("button", { name: "Save" }))
+    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }))
 
     await waitFor(() =>
       expect(mockedRecordLearning).toHaveBeenCalledWith("edited", 1),
@@ -175,7 +175,7 @@ describe("PinEditor", () => {
     render(<PinEditor id={1} />)
 
     await screen.findByDisplayValue("Original")
-    fireEvent.click(screen.getByRole("button", { name: "Regenerate" }))
+    fireEvent.click(screen.getByRole("button", { name: "Regenerate AI" }))
 
     await waitFor(() =>
       expect(mockedRecordLearning).toHaveBeenCalledWith("regenerated", 1),

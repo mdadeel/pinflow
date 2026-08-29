@@ -11,7 +11,8 @@ interface CalendarGridProps {
 }
 
 function utcParts(iso: string): { year: number; month: number; day: number } | null {
-  const d = new Date(iso + "Z")
+  const hasTimezone = iso.includes("Z") || (iso.includes("T") && (iso.split("T")[1].includes("+") || iso.split("T")[1].includes("-")))
+  const d = new Date(hasTimezone ? iso : iso + "Z")
   if (Number.isNaN(d.getTime())) return null
   return {
     year: d.getUTCFullYear(),

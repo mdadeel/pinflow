@@ -1,10 +1,22 @@
 "use client"
 
-import { useCallback, useEffect } from "react"
+import { useCallback, useEffect, useState } from "react"
+import Image from "next/image"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { useQueueStore } from "@/stores/queue-store"
-import { fetchPins, movePin, ApiError, type Pin, type PinStatus } from "@/lib/api"
+import {
+  fetchPins,
+  movePin,
+  resetPin,
+  retryPin,
+  deletePin,
+  bulkAction,
+  ApiError,
+  type Pin,
+  type PinStatus,
+  type BulkAction,
+} from "@/lib/api"
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
 
@@ -28,12 +40,40 @@ function formatScheduled(value: string | null): string | null {
   })
 }
 
-function PinCard({ pin }: { pin: Pin }) {
+function PinCard({ pin, onChanged }: { pin: Pin; onChanged: () => void }) {
   const router = useRouter()
   const setDragging = useQueueStore((s) => s.setDragging)
   const draggingId = useQueueStore((s) => s.draggingId)
+  const setError = useQueueStore((s) => s.setError)
+  const clearError = useQueueStore((s) => s.clearError)
+  const [busy, setBusy] = useState(false)
   const src = `${API_BASE}${pin.image_url}`
   const scheduled = formatScheduled(pin.scheduled_time)
+
+  async function run(action: "reset" | "retry" | "delete") {
+    if (busy) return
+    setBusy(true)
+    try {
+      if (action === "delete") {
+        if (!confirm(`Delete pin #${pin.id}? This cannot be undone.`)) return
+        await deletePin(pin.id)
+      } else if (action === "reset") {
+        await resetPin(pin.id)
+      } else {
+        await retryPin(pin.id)
+      }
+      clearError()
+      onChanged()
+    } catch (err) {
+      setError(
+        err instanceof ApiError
+          ? `Failed to ${action} pin #${pin.id}.`
+          : `Network error: could not ${action} pin #${pin.id}.`,
+      )
+    } finally {
+      setBusy(false)
+    }
+  }
 
   return (
     <div
@@ -50,7 +90,9 @@ function PinCard({ pin }: { pin: Pin }) {
       }`}
     >
       <div className="overflow-hidden rounded-md border border-border bg-muted">
-        <img src={src} alt={pin.filename} className="aspect-square w-full object-cover" />
+        <div className="relative aspect-square w-full">
+          <Image src={src} alt={pin.filename} fill className="object-cover" sizes="(max-width: 1024px) 20vw, 180px" />
+        </div>
       </div>
       <div className="mt-2 space-y-0.5">
         <div className="flex items-center gap-1.5">
@@ -74,19 +116,58 @@ function PinCard({ pin }: { pin: Pin }) {
           <p className="truncate text-xs text-muted-foreground">{scheduled}</p>
         )}
       </div>
-      <Button
-        type="button"
-        variant="secondary"
-        size="sm"
-        className="mt-2 w-full"
-        onClick={(e) => {
-          e.stopPropagation()
-          router.push(`/pin/${pin.id}`)
-        }}
-      >
-        Edit
-      </Button>
-    </div>
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          className="mt-2 w-full"
+          disabled={busy}
+          onClick={(e) => {
+            e.stopPropagation()
+            router.push(`/pin/${pin.id}`)
+          }}
+        >
+          Edit
+        </Button>
+        <div className="mt-1 grid grid-cols-3 gap-1">
+          <Button
+            type="button"
+            variant="outline"
+            size="xs"
+            disabled={busy || pin.status === "pending"}
+            onClick={(e) => {
+              e.stopPropagation()
+              void run("reset")
+            }}
+          >
+            Reset
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="xs"
+            disabled={busy || pin.status === "published"}
+            onClick={(e) => {
+              e.stopPropagation()
+              void run("retry")
+            }}
+          >
+            Retry
+          </Button>
+          <Button
+            type="button"
+            variant="destructive"
+            size="xs"
+            disabled={busy}
+            onClick={(e) => {
+              e.stopPropagation()
+              void run("delete")
+            }}
+          >
+            Delete
+          </Button>
+        </div>
+      </div>
   )
 }
 
@@ -106,6 +187,25 @@ export function KanbanBoard() {
     )
     setPins(results.flatMap((r) => r.items))
   }, [setPins])
+
+  const [busyBulk, setBusyBulk] = useState(false)
+
+  async function handleBulk(action: BulkAction) {
+    const noun = action === "delete" ? "DELETE ALL pins" : `${action} ALL pins`
+    if (!confirm(`Are you sure you want to ${noun}?`)) return
+    setBusyBulk(true)
+    clearError()
+    try {
+      await bulkAction(action)
+      await loadAll()
+    } catch (err) {
+      setError(
+        err instanceof ApiError ? "Bulk action failed. Try again." : "Bulk failed.",
+      )
+    } finally {
+      setBusyBulk(false)
+    }
+  }
 
   useEffect(() => {
     void loadAll()
@@ -142,13 +242,39 @@ export function KanbanBoard() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
           Drag a pin between columns to change its status.
         </p>
-        <Button variant="outline" size="sm" onClick={() => void loadAll()}>
-          Refresh
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => void loadAll()}>
+            Refresh
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={busyBulk}
+            onClick={() => void handleBulk("reset")}
+          >
+            Reset all
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={busyBulk}
+            onClick={() => void handleBulk("retry")}
+          >
+            Retry all
+          </Button>
+          <Button
+            variant="destructive"
+            size="sm"
+            disabled={busyBulk}
+            onClick={() => void handleBulk("delete")}
+          >
+            Delete all
+          </Button>
+        </div>
       </div>
 
       {error && (
@@ -177,7 +303,7 @@ export function KanbanBoard() {
               </div>
               <div className="flex flex-col gap-2">
                 {columnPins.map((pin) => (
-                  <PinCard key={pin.id} pin={pin} />
+                  <PinCard key={pin.id} pin={pin} onChanged={() => void loadAll()} />
                 ))}
                 {columnPins.length === 0 && (
                   <p className="px-1 py-6 text-center text-xs text-muted-foreground">

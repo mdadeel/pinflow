@@ -1,7 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import { fetchPins, fetchStats, movePin, uploadFiles, type PinStatus } from "../api"
-
-const BASE = "http://localhost:8000"
+import { fetchPins, fetchStats, movePin, uploadFiles } from "../api"
 
 beforeEach(() => {
   global.fetch = vi.fn()

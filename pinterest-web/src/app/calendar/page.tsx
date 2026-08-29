@@ -1,102 +1,101 @@
-"use client"
+"use client";
 
-import { useCallback, useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
-import { CalendarGrid } from "@/components/calendar-grid"
-import {
-  fetchPins,
-  reschedulePin,
-  ApiError,
-  type Pin,
-} from "@/lib/api"
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { CalendarGrid } from "@/components/calendar-grid";
+import { fetchPins, reschedulePin, ApiError, type Pin } from "@/lib/api";
 
 function describeError(err: unknown): string {
   if (err instanceof ApiError) {
-    const detail = (err.body as { detail?: unknown } | null)?.detail
-    if (typeof detail === "string") return detail
-    return err.message
+    const detail = (err.body as { detail?: unknown } | null)?.detail;
+    if (typeof detail === "string") return detail;
+    return err.message;
   }
-  return err instanceof Error ? err.message : "Reschedule failed. Try again."
+  return err instanceof Error ? err.message : "Reschedule failed. Try again.";
 }
 
 const MONTH_NAMES = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
-]
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
 
 export default function CalendarPage() {
-  const router = useRouter()
-  const now = new Date()
-  const [pins, setPins] = useState<Pin[]>([])
-  const [year, setYear] = useState(now.getUTCFullYear())
-  const [month, setMonth] = useState(now.getUTCMonth() + 1)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const router = useRouter();
+  const now = new Date();
+  const [pins, setPins] = useState<Pin[]>([]);
+  const [year, setYear] = useState(now.getUTCFullYear());
+  const [month, setMonth] = useState(now.getUTCMonth() + 1);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    let cancelled = false
-    setLoading(true)
-    setError(null)
+    let cancelled = false;
     Promise.all([
       fetchPins({ status: "scheduled", per_page: 200 }),
       fetchPins({ status: "published", per_page: 200 }),
     ])
       .then(([scheduled, published]) => {
-        if (cancelled) return
-        setPins([...scheduled.items, ...published.items])
+        if (cancelled) return;
+        setPins([...scheduled.items, ...published.items]);
+        setError(null);
       })
       .catch((err) => {
-        if (!cancelled) setError(describeError(err))
+        if (!cancelled) setError(describeError(err));
       })
       .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
+        if (!cancelled) setLoading(false);
+      });
     return () => {
-      cancelled = true
+      cancelled = true;
+    };
+  }, [year, month]);
+
+  const changeMonth = (delta: number) => {
+    let next = month + delta;
+    let nextYear = year;
+    if (next < 1) {
+      next = 12;
+      nextYear = year - 1;
+    } else if (next > 12) {
+      next = 1;
+      nextYear = year + 1;
     }
-  }, [year, month])
+    setMonth(next);
+    setYear(nextYear);
+  };
 
-  const changeMonth = useCallback((delta: number) => {
-    setMonth((prevMonth) => {
-      const next = prevMonth + delta
-      if (next < 1) {
-        setYear((y) => y - 1)
-        return 12
-      }
-      if (next > 12) {
-        setYear((y) => y + 1)
-        return 1
-      }
-      return next
-    })
-  }, [])
-
-  const handleReschedule = useCallback(
-    async (pinId: number, day: number) => {
-      const iso = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}T12:00:00`
-      const original = pins.find((p) => p.id === pinId)?.scheduled_time ?? null
+  const handleReschedule = async (pinId: number, day: number) => {
+    const iso = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}T12:00:00`;
+    const original = pins.find((p) => p.id === pinId)?.scheduled_time ?? null;
+    setPins((prev) =>
+      prev.map((p) => (p.id === pinId ? { ...p, scheduled_time: iso } : p)),
+    );
+    setError(null);
+    try {
+      await reschedulePin(pinId, iso);
+    } catch (err) {
       setPins((prev) =>
-        prev.map((p) => (p.id === pinId ? { ...p, scheduled_time: iso } : p)),
-      )
-      setError(null)
-      try {
-        await reschedulePin(pinId, iso)
-      } catch (err) {
-        setPins((prev) =>
-          prev.map((p) => (p.id === pinId ? { ...p, scheduled_time: original } : p)),
-        )
-        setError(describeError(err))
-      }
-    },
-    [year, month, pins],
-  )
+        prev.map((p) =>
+          p.id === pinId ? { ...p, scheduled_time: original } : p,
+        ),
+      );
+      setError(describeError(err));
+    }
+  };
 
-  const handleSelect = useCallback(
-    (pinId: number) => {
-      router.push(`/pin/${pinId}`)
-    },
-    [router],
-  )
+  const handleSelect = (pinId: number) => {
+    router.push(`/pin/${pinId}`);
+  };
 
   return (
     <div className="mx-auto max-w-7xl px-6 py-10">
@@ -104,7 +103,8 @@ export default function CalendarPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Calendar</h1>
           <p className="mt-2 text-muted-foreground">
-            Drag a scheduled pin onto another day to reschedule it. Click a pin to edit.
+            Drag a scheduled pin onto another day to reschedule it. Click a pin
+            to edit.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -155,5 +155,5 @@ export default function CalendarPage() {
         )}
       </div>
     </div>
-  )
+  );
 }

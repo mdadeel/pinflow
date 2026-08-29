@@ -1,17 +1,23 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { render, screen, fireEvent, waitFor } from "@testing-library/react"
 import { UploadZone } from "@/components/upload-zone"
-import { uploadFiles } from "@/lib/api"
+import { uploadFiles, fetchPins, bulkAction, runPipeline } from "@/lib/api"
 
 vi.mock("@/lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api")>()
   return {
     ...actual,
     uploadFiles: vi.fn(),
+    fetchPins: vi.fn(),
+    bulkAction: vi.fn(),
+    runPipeline: vi.fn(),
   }
 })
 
 const mockedUpload = vi.mocked(uploadFiles)
+const mockedFetchPins = vi.mocked(fetchPins)
+const mockedBulkAction = vi.mocked(bulkAction)
+const mockedRunPipeline = vi.mocked(runPipeline)
 
 function makeFile(name: string, type = "image/png") {
   return new File([new Uint8Array([1, 2, 3])], name, { type })
@@ -44,6 +50,7 @@ describe("UploadZone", () => {
     mockedUpload.mockResolvedValue({
       added: [fakePin],
       duplicates: ["dog.png"],
+      retried: [],
       rejected: [{ filename: "bad.gif", reason: "unsupported type" }],
     })
 
@@ -69,5 +76,29 @@ describe("UploadZone", () => {
     fireEvent.click(screen.getByRole("button", { name: /browse/i }))
     expect(clickSpy).toHaveBeenCalled()
     clickSpy.mockRestore()
+  })
+
+  it("reset failed button resets failed pins and runs the pipeline", async () => {
+    mockedFetchPins.mockResolvedValue({
+      items: [{ id: 1 } as unknown as import("@/lib/api").Pin],
+      total: 1,
+      page: 1,
+      per_page: 200,
+    } as unknown as import("@/lib/api").PinListResponse)
+    mockedBulkAction.mockResolvedValue({} as never)
+    mockedRunPipeline.mockResolvedValue({} as never)
+
+    render(<UploadZone />)
+    fireEvent.click(screen.getByRole("button", { name: /reset failed/i }))
+
+    await waitFor(() =>
+      expect(mockedFetchPins).toHaveBeenCalledWith({
+        status: "failed",
+        per_page: 200,
+      }),
+    )
+    expect(mockedBulkAction).toHaveBeenCalledWith("reset", [1])
+    expect(mockedRunPipeline).toHaveBeenCalled()
+    expect(screen.getByTestId("reset-msg").textContent).toMatch(/Reset 1 failed/)
   })
 })
