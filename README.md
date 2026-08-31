@@ -1,109 +1,202 @@
-# Wallpeps
+# PinFlow — Pinterest Automation Platform
 
-Automated Pinterest publisher for Wallpeps: watches an image folder → generates SEO metadata via OpenRouter vision → stores pins in SQLite → publishes to Pinterest on a schedule → tracks analytics with a small web dashboard.
+**Automate your Pinterest workflow with AI-powered pin generation, scheduling, and CSV bulk upload.**
 
-## Setup
+---
 
-```bash
-python3 -m venv venv && ./venv/bin/pip install -e ".[dev]"
-cp .env.example .env   # fill in keys
-```
-
-### Environment variables (`.env`)
-
-| Variable | Default | Purpose |
-|---|---|---|
-| `OPENROUTER_API_KEY` | — | OpenRouter API key for vision metadata generation |
-| `PINTEREST_ACCESS_TOKEN` | — | Pinterest user access token |
-| `PINTEREST_BOARD_ID` | — | Fallback board id when no mapping matches |
-| `OPENROUTER_MODEL` | `google/gemini-2.5-flash` | Vision model used for metadata |
-| `BATCH_SIZE` | `25` | Pins analyzed per AI call batch |
-| `POSTS_PER_DAY` | `5` | Max scheduled posts per day |
-| `POST_HOURS` | `8,11,14,17,20` | UTC hours used as posting slots |
-| `WATCH_DIR` | `./images` | Folder watched for new images |
-| `BOARD_OVERRIDES` | `{}` | JSON map of board name → Pinterest board id, e.g. `{"Couple Wallpapers":"1234567890"}` |
-
-## Pinterest token
-
-1. Create/choose an app at the [Pinterest developer console](https://developers.pinterest.com/).
-2. Generate a user token with scopes: `boards:read`, `pins:read`, `pins:write`, `user_accounts:read`.
-3. Paste it as `PINTEREST_ACCESS_TOKEN` in `.env`.
-
-Tokens expire (~30 days): regenerate and replace when publishing starts failing auth.
-Refresh-token automation is intentionally deferred.
-
-## Usage
+## � quick-start
 
 ```bash
-./venv/bin/python -m pinterest_automation.main scan           # ingest new images from WATCH_DIR
-./venv/bin/python -m pinterest_automation.main analyze        # generate metadata via OpenRouter
-./venv/bin/python -m pinterest_automation.main schedule       # assign future posting slots
-./venv/bin/python -m pinterest_automation.main publish-now --id N   # publish one pin immediately
-./venv/bin/python -m pinterest_automation.main run-once       # scan + analyze + schedule + publish due
-./venv/bin/python -m pinterest_automation.main daemon         # long-running scheduler loop
-./venv/bin/python -m pinterest_automation.main serve          # analytics dashboard on :8000
-./venv/bin/python -m pinterest_automation.main sync-analytics # refresh metrics for published pins
-./venv/bin/python -m pinterest_automation.main report         # daily/weekly summary report
-```
+# 1. Create and activate a virtual environment
+python3 -m venv venv
+source venv/bin/activate
 
-## Pipeline states
+# 2. Install the package in development mode
+pip install -e ".[dev]"
 
-```
-pending ──► ready ──► scheduled ──► published
-   │                      │
-   └───────(retries)──────┴──► failed        MAX_RETRIES=5 → terminal
-```
+# 3. Copy the environment file and fill in required keys
+cp .env.example .env
+# - OPENROUTER_API_KEY: required for AI vision metadata generation
+# - PINTEREST_ACCESS_TOKEN: required for publishing to Pinterest
+# - PINTEREST_BOARD_ID: fallback board ID
 
-Schedules live in SQLite, so runs are restart-safe. Failed publishes back off and retry up to `MAX_RETRIES` before the pin becomes permanently failed.
-
-## Adding platforms later
-
-The pattern is one client module (`pinterest_automation/api/<platform>.py`) plus a publish function shaped like `uploader.publish_pin`. Core pipeline (watcher/analyzer/scheduler/DB) stays untouched.
-
-## Limitations
-
-- Alt text is stored locally only — Pinterest v5 create-pin has no alt_text field.
-- `post_hours` are UTC.
-- Single Pinterest account per instance.
-- Analytics window = since each pin's publish date.
-
-## Platform UI (`pinterest-web`)
-
-A Next.js 16 SPA providing drag-drop upload, a Kanban queue, an editor workspace, a visual calendar scheduler, an analytics center, and a live activity feed. It talks to the same FastAPI app that serves the legacy analytics dashboard (`serve` on `:8000`).
-
-### Run
-
-```bash
-# terminal 1 — backend (serves /api/* and /ws on :8000)
+# 4. Start the backend server
 ./venv/bin/python -m pinterest_automation.main serve
 
-# terminal 2 — frontend
+# 5. Start the frontend (separate terminal)
 cd pinterest-web
 npm install        # first time only
 npm run dev        # http://localhost:3000
 ```
 
-The frontend expects the API at `NEXT_PUBLIC_API_URL` (default `http://localhost:8000`). CORS allows only `http://localhost:3000`.
+---
 
-### AI provider configuration
-The metadata generator (`analyzer`) calls an LLM. It defaults to OpenRouter (`OPENROUTER_API_KEY`); to use any other provider from `mini.md`, set `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL`, and `LLM_PROTOCOL` (`openai` for OpenAI-chat-shaped endpoints like z.ai/Pollinations/Nara/Moonshot/DashScope, or `anthropic` for Aerolink/FreeModel/OpenCode Zen). See `.env.example`.
+## � Environment Variables (`.env`)
 
-### Phase 1 features
-- Drag-drop / paste / multi-select upload with SHA-256 duplicate detection.
-- Kanban queue: drag pins between **Uploaded (`pending`) / Ready (`ready`) / Scheduled (`scheduled`) / Published (`published`) / Failed (`failed`)**. Only `pending ↔ ready` is a manual move; other transitions are pipeline-driven and return `409`.
-- Overview stat cards: totals, per-status counts, clicks / saves / impressions.
-- Live activity feed over WebSocket (`/ws`), seeded from recent events and reconnecting with backoff.
+| Variable | Required | Default | Purpose |
+|---|---|---|---|
+| `OPENROUTER_API_KEY` | **yes** | — | API key for AI vision metadata generation via OpenRouter |
+| `PINTEREST_ACCESS_TOKEN` | **yes** | — | Pinterest user access token (scopes: `boards:read`, `pins:read`, `pins:write`, `user_accounts:read`) |
+| `PINTEREST_BOARD_ID` | no | `` | Fallback board ID when AI category mapping doesn't match |
+| `OPENROUTER_MODEL` | no | `google/gemini-2.5-flash` | Vision model used for metadata generation |
+| `ANALYSIS_WORKERS` | no | `2` | Number of concurrent LLM calls during analysis |
+| `AI_CALL_DELAY_SECONDS` | no | `1.0` | Delay between individual LLM calls (rate-limit protection) |
+| `POSTS_PER_DAY` | no | `50` | Maximum pins scheduled per day |
+| `POST_HOURS` | no | `8,11,14,17,20` | UTC hours used as posting slots |
+| `BATCH_SIZE` | no | `25` | Pins analyzed per AI call batch |
+| `WATCH_DIR` | no | `./images` | Folder watched for new images |
+| `BOARD_OVERRIDES` | no | `{}` | JSON map of AI category → Pinterest board ID, e.g. `{"Lofi":"1234567890"}` |
 
-### Phase 2 features
-- **Editor** (`/pin/[id]`): review the generated thumbnail + SEO (title, description, alt text, keywords, tags, board, category). Save edits (`PATCH /api/pins/{id}`, only allowed from `pending`/`ready`), **Regenerate** AI metadata (`POST /api/pins/{id}/regenerate`), and **Approve** to schedule (`POST /api/pins/{id}/approve`, only from `ready`). A "Possible duplicates" panel lists near-identical images via content-hash comparison.
-- **Visual calendar** (`/calendar`): month grid of scheduled/published pins; drag a scheduled pin to another day to reschedule (`PATCH /api/pins/{id}/schedule`).
-- **Analytics center** (`/analytics`): total/status stat cards, status breakdown, top pins by clicks, 30-day published/clicks sparklines (hand-rolled SVG), and a "Learning signals" card aggregating human feedback.
-- **Learning loop**: Approve/Regenerate/Save in the editor record a feedback signal (`POST /api/learning`); counts are surfaced in Analytics.
+### ⚠️ Important: web2api (Gemini Local Sidecar)
 
-> Note: "duplicate detection" is exact/near-exact via the stored SHA-256 `image_hash` (Hamming distance over the hash bits). True perceptual (resized/cropped) near-duplicate detection would require a pHash dependency + ingestion change and is out of scope for this build.
+The system can operate using only the **Gemini Web2API sidecar** running locally at `http://127.0.0.1:8081`. This sidecar proxies Gemini Vision requests and has no personal API token — it's a local development tool.
 
-### Frontend tests / build
+**To use Web2API only (no OpenRouter key needed):**
+
+1. Ensure the Gemini Web2API sidecar is running:
+   ```bash
+   # Start the sidecar (runs at http://127.0.0.1:8081)
+   ./venv/bin/python -m pinterest_automation.services.gemini_sidecar
+   ```
+
+2. Update `.env` to use only the Web2API provider:
+   ```env
+   LLM_PROVIDERS=[{"name":"gemini-web2api-local","protocol":"openai","base_url":"http://127.0.0.1:8081/v1/chat/completions","api_key":"sk-gemini-web2api","model":"gemini-3.6-flash","protocol":"openai"}]
+   ANALYSIS_WORKERS=1
+   AI_CALL_DELAY_SECONDS=1.0
+   ```
+   
+   **Note:** The Gemini API has request quotas. If you see `HTTP 429 Too Many Requests`, you must either:
+   - Add credits to Google AI Studio (https://aistudio.google.com/)
+   - Add OpenRouter API key back to `.env`
+   - Wait for quota reset
+
+3. Run the pipeline:
+   ```bash
+   ./venv/bin/python -m pinterest_automation.main analyze
+   ```
+
+> ⚠️ **Do not commit `.env` or `mini.md`** — these contain API keys and are listed in `.gitignore`. The `mini.md` file holds personal API keys and must never be committed or shared.
+
+---
+
+## � Pinterest API Token
+
+1. Create/choose an app at the [Pinterest developer console](https://developers.pinterest.com/).
+2. Generate a user token with scopes: `boards:read`, `pins:read`, `pins:write`, `user_accounts:read`.
+3. Paste it as `PINTEREST_ACCESS_TOKEN` in `.env`.
+4. Tokens expire (~30 days): regenerate and replace when publishing starts failing auth.
+
+---
+
+## � Usage
 
 ```bash
-cd pinterest-web && npm run test && npm run build
+# Scan folder for new images and register in database
+./venv/bin/python -m pinterest_automation.main scan
+
+# Generate AI metadata via OpenRouter (or Web2API)
+./venv/bin/python -m pinterest_automation.main analyze [--limit N]
+
+# Assign scheduling slots (pins must be status `ready`)
+./venv/bin/python -m pinterest_automation.main schedule [--limit N]
+
+# Publish one pin immediately
+./venv/bin/python -m pinterest_automation.main publish-now --id 42
+
+# Run one full cycle: scan + analyze + schedule + publish due
+./venv/bin/python -m pinterest_automation.main run-once
+
+# Long-running scheduler loop (daemon mode)
+./venv/bin/python -m pinterest_automation.main daemon
+
+# Serve analytics dashboard on :8000
+./venv/bin/python -m pinterest_automation.main serve
+
+# Sync analytics for published pins
+./venv/bin/python -m pinterest_automation.main sync-analytics --days 30
+
+# Generate daily/weekly report
+./venv/bin/python -m pinterest_automation.main report --kind daily
 ```
+
+---
+
+## � Pipeline States
+
+```
+pending ────► ready ────► scheduled ────► published
+   │              │
+   └──────(retries)──────► failed    MAX_RETRIES=5 → terminal
+```
+
+- Schedules live in SQLite, so runs are restart-safe.
+- Failed publishes back off and retry up to `MAX_RETRIES` before the pin becomes permanently failed.
+
+---
+
+## � Frontend (pinterest-web)
+
+A Next.js 16 SPA providing:
+- Drag-drop upload with SHA-256 duplicate detection
+- Kanban queue: drag pins between **Uploaded / Ready / Scheduled / Published / Failed**
+- Visual calendar scheduler (`/calendar`)
+- Analytics center (`/analytics`) with click/save/impression tracking
+- Live activity feed over WebSocket (`/ws`)
+- Pin editor: review/generate/approve pipeline steps
+
+### Run
+
+```bash
+# Terminal 1 — backend (serves /api/* and /ws on :8000)
+./venv/bin/python -m pinterest_automation.main serve
+
+# Terminal 2 — frontend
+cd pinterest-web
+npm run dev        # http://localhost:3000
+```
+
+The frontend expects the API at `NEXT_PUBLIC_API_URL` (default `http://localhost:8000`). CORS allows only `http://localhost:3000`.
+
+---
+
+## � AI Provider Configuration
+
+The metadata generator (`analyzer`) calls an LLM. Default is OpenRouter (`OPENROUTER_API_KEY`). To use only the local Web2API sidecar, set `LLM_PROVIDERS` in `.env` as shown above.
+
+Other providers from `mini.md` can be configured via:
+- `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL`, `LLM_PROTOCOL`
+- `LLM_PROTOCOL` is `openai` (chat/completions) or `anthropic` (messages)
+
+See `.env.example` for the full schema.
+
+---
+
+## � Development & Commands
+
+```bash
+# Frontend tests & build
+cd pinterest-web && npm run test && npm run build
+
+# Backend pytest
+./venv/bin/python -m pytest tests/ -v
+
+# Lint
+./venv/bin/python -m ruff check .
+```
+
+---
+
+## � Limitations
+
+- Alt text is stored locally only — Pinterest v5 create-pin has no `alt_text` field.
+- `post_hours` are UTC.
+- Single Pinterest account per instance.
+- Analytics window = since each pin's publish date.
+- Duplicate detection is via stored SHA-256 `image_hash` (Hamming distance). True perceptual near-duplicate detection would require pHash and is out of scope.
+
+---
+
+## � License
+
+MIT License. See `LICENSE` for details.
