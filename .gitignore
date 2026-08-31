@@ -48,3 +48,7 @@ run.md
 .idea/
 --full-page
 gih.md
+pinterest-web
+pinterest-images
+node_modules
+.aider*
